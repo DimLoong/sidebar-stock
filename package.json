@@ -1,149 +1,150 @@
 {
-  "name": "stock-investment",
-  "displayName": "股票看盘工具",
-  "description": "支持A股、港股、美股，快速掌握自选股动态，工作投资两不误！",
-  "keywords": [
-    "炒股",
-    "股票",
-    "股市",
-    "A股",
-    "港股",
-    "美股",
-    "自选股",
-    "大盘"
-  ],
-  "version": "1.3.1",
-  "publisher": "coderwsh",
-  "icon": "assets/icon.png",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/coderwang/stock-investment"
-  },
-  "engines": {
-    "vscode": "^1.80.0"
-  },
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [],
-  "main": "./dist/extension.js",
-  "contributes": {
-    "configuration": {
-      "title": "股票看盘",
-      "properties": {
-        "stockInvestment.stockCodeList": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "object"
-              }
-            ]
-          },
-          "description": "推荐使用 JSON 数组配置。股票示例：{\"type\":\"stock\",\"market\":\"sh\",\"code\":\"600519\",\"shares\":100,\"costPrice\":1680}；板块示例：{\"type\":\"sector\",\"name\":\"航天\",\"code\":\"886078\"}。兼容旧字符串格式并会自动迁移。"
-        }
-      }
-    },
-    "views": {
-      "explorer": [
-        {
-          "id": "stockSummaryView",
-          "name": "Stock Summary"
-        },
-        {
-          "id": "stockView",
-          "name": "Stock"
-        }
-      ]
-    },
-    "commands": [
-      {
-        "command": "extension.showStockPanel",
-        "title": "Show Stock Panel"
-      },
-      {
-        "command": "stockView.openWebsite",
-        "icon": "$(link-external)",
-        "title": "打开东方财富",
-        "enablement": "view == stockView"
-      },
-      {
-        "command": "stockView.refresh",
-        "icon": "$(refresh)",
-        "title": "刷新股票面板",
-        "enablement": "view == stockView"
-      },
-      {
-        "command": "stockView.editHoldingShares",
-        "title": "编辑持仓信息",
-        "enablement": "view == stockView && viewItem == stockRoot"
-      },
-      {
-        "command": "stockView.deleteStock",
-        "title": "删除股票",
-        "enablement": "view == stockView && viewItem == stockRoot"
-      },
-      {
-        "command": "stockView.addStock",
-        "icon": "$(add)",
-        "title": "添加自选股",
-        "enablement": "view == stockView"
-      }
+    "name": "stock-investment-pro",
+    "displayName": "Stock Investment Pro",
+    "description": "股票看盘工具，支持A股、港股、美股，快速掌握自选股动态",
+    "keywords": [
+        "stock",
+        "炒股",
+        "股票",
+        "股市",
+        "A股",
+        "港股",
+        "美股",
+        "自选股",
+        "大盘"
     ],
-    "menus": {
-      "view/title": [
-        {
-          "command": "stockView.openWebsite",
-          "when": "view == stockView",
-          "group": "navigation@1"
+    "version": "1.0.0",
+    "publisher": "dimloong",
+    "icon": "assets/icon.png",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/DimLoong/stock-investment-pro"
+    },
+    "engines": {
+        "vscode": "^1.80.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [],
+    "main": "./dist/extension.js",
+    "contributes": {
+        "configuration": {
+            "title": "股票看盘",
+            "properties": {
+                "stockInvestment.stockCodeList": {
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "object"
+                            }
+                        ]
+                    },
+                    "description": "推荐使用 JSON 数组配置。股票示例：{\"type\":\"stock\",\"market\":\"sh\",\"code\":\"600519\",\"shares\":100,\"costPrice\":1680}；板块示例：{\"type\":\"sector\",\"name\":\"航天\",\"code\":\"886078\"}。兼容旧字符串格式并会自动迁移。"
+                }
+            }
         },
-        {
-          "command": "stockView.refresh",
-          "when": "view == stockView",
-          "group": "navigation@2"
+        "views": {
+            "explorer": [
+                {
+                    "id": "stockSummaryView",
+                    "name": "Stock Summary"
+                },
+                {
+                    "id": "stockView",
+                    "name": "Stock"
+                }
+            ]
         },
-        {
-          "command": "stockView.addStock",
-          "when": "view == stockView",
-          "group": "navigation@3"
+        "commands": [
+            {
+                "command": "extension.showStockPanel",
+                "title": "Show Stock Panel"
+            },
+            {
+                "command": "stockView.openWebsite",
+                "icon": "$(link-external)",
+                "title": "打开东方财富",
+                "enablement": "view == stockView"
+            },
+            {
+                "command": "stockView.refresh",
+                "icon": "$(refresh)",
+                "title": "刷新股票面板",
+                "enablement": "view == stockView"
+            },
+            {
+                "command": "stockView.editHoldingShares",
+                "title": "编辑持仓信息",
+                "enablement": "view == stockView && viewItem == stockRoot"
+            },
+            {
+                "command": "stockView.deleteStock",
+                "title": "删除股票",
+                "enablement": "view == stockView && viewItem == stockRoot"
+            },
+            {
+                "command": "stockView.addStock",
+                "icon": "$(add)",
+                "title": "添加自选股",
+                "enablement": "view == stockView"
+            }
+        ],
+        "menus": {
+            "view/title": [
+                {
+                    "command": "stockView.openWebsite",
+                    "when": "view == stockView",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "stockView.refresh",
+                    "when": "view == stockView",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "stockView.addStock",
+                    "when": "view == stockView",
+                    "group": "navigation@3"
+                }
+            ],
+            "view/item/context": [
+                {
+                    "command": "stockView.editHoldingShares",
+                    "when": "view == stockView && viewItem == stockRoot",
+                    "group": "stock@1"
+                },
+                {
+                    "command": "stockView.deleteStock",
+                    "when": "view == stockView && (viewItem == stockRoot || viewItem == sectorRoot)",
+                    "group": "stock@2"
+                }
+            ]
         }
-      ],
-      "view/item/context": [
-        {
-          "command": "stockView.editHoldingShares",
-          "when": "view == stockView && viewItem == stockRoot",
-          "group": "stock@1"
-        },
-        {
-          "command": "stockView.deleteStock",
-          "when": "view == stockView && (viewItem == stockRoot || viewItem == sectorRoot)",
-          "group": "stock@2"
-        }
-      ]
+    },
+    "scripts": {
+        "vscode:prepublish": "webpack --mode production",
+        "compile": "webpack",
+        "watch": "webpack --watch",
+        "pretest": "npm run compile && npm run lint",
+        "lint": "eslint src --ext ts"
+    },
+    "devDependencies": {
+        "@types/mocha": "^10.0.10",
+        "@types/node": "22.x",
+        "@types/vscode": "^1.80.0",
+        "@vscode/test-cli": "^0.0.11",
+        "@vscode/test-electron": "^2.5.2",
+        "eslint": "^9.39.2",
+        "ts-loader": "^9.5.4",
+        "typescript": "^5.9.3",
+        "typescript-eslint": "^8.52.0",
+        "webpack": "^5.104.1",
+        "webpack-cli": "^6.0.1"
     }
-  },
-  "scripts": {
-    "vscode:prepublish": "webpack --mode production",
-    "compile": "webpack",
-    "watch": "webpack --watch",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src --ext ts"
-  },
-  "devDependencies": {
-    "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
-    "@types/vscode": "^1.80.0",
-    "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2",
-    "eslint": "^9.39.2",
-    "ts-loader": "^9.5.4",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.52.0",
-    "webpack": "^5.104.1",
-    "webpack-cli": "^6.0.1"
-  }
 }
