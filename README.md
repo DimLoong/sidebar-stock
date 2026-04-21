@@ -1,4 +1,4 @@
-# 股票看盘工具 Stock Investment Pro
+# 侧边栏股票看盘工具 Sibdebar Stock
 
 > 此项目Fork from [coderwang/stock-investment](https://github.com/coderwang/stock-investment)
 
