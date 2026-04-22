@@ -30,9 +30,9 @@
     "main": "./dist/extension.js",
     "contributes": {
         "configuration": {
-            "title": "股票看盘",
+            "title": "Sidebar Stock",
             "properties": {
-                "stockInvestment.stockCodeList": {
+                "sidebarStock.stockCodeList": {
                     "type": "array",
                     "default": [],
                     "items": {
@@ -46,6 +46,27 @@
                         ]
                     },
                     "description": "推荐使用 JSON 数组配置。股票示例：{\"type\":\"stock\",\"market\":\"sh\",\"code\":\"600519\",\"shares\":100,\"costPrice\":1680}；板块示例：{\"type\":\"sector\",\"name\":\"航天\",\"code\":\"886078\"}。兼容旧字符串格式并会自动迁移。"
+                },
+                "sidebarStock.tabName": {
+                    "type": "string",
+                    "default": "Stock",
+                    "description": "Sidebar Stock 侧边栏标签页名称（仅影响视图标题）"
+                },
+                "stockInvestment.stockCodeList": {
+                    "type": "array",
+                    "default": [],
+                    "deprecationMessage": "此配置项已弃用，请使用 sidebarStock.stockCodeList",
+                    "items": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "object"
+                            }
+                        ]
+                    },
+                    "description": "旧版配置项，保留兼容。"
                 }
             }
         },

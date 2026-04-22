@@ -6,6 +6,9 @@ import { AutoRefreshService } from "./services/autoRefreshService";
 import { StockTreeDataProvider } from "./tree/stockTreeDataProvider";
 
 const REFRESH_INTERVAL = 3000;
+const STOCK_CONFIG_KEY = "sidebarStock.stockCodeList";
+const LEGACY_STOCK_CONFIG_KEY = "stockInvestment.stockCodeList";
+const TAB_NAME_KEY = "sidebarStock.tabName";
 
 let autoRefreshService: AutoRefreshService | undefined;
 
@@ -22,14 +25,18 @@ export async function activate(context: vscode.ExtensionContext) {
     showCollapseAll: false,
     dragAndDropController: stockDataProvider,
   });
+  applyStockViewTitle(stockView);
 
   autoRefreshService.start(() => {
     stockDataProvider.refresh();
   }, REFRESH_INTERVAL);
 
   const configChangeListener = vscode.workspace.onDidChangeConfiguration(async (e) => {
-    if (e.affectsConfiguration("stockInvestment.stockCodeList")) {
+    if (e.affectsConfiguration(STOCK_CONFIG_KEY) || e.affectsConfiguration(LEGACY_STOCK_CONFIG_KEY)) {
       await stockDataProvider.refresh();
+    }
+    if (e.affectsConfiguration(TAB_NAME_KEY)) {
+      applyStockViewTitle(stockView);
     }
   });
 
@@ -40,4 +47,9 @@ export async function activate(context: vscode.ExtensionContext) {
 export function deactivate() {
   autoRefreshService?.stop();
   autoRefreshService = undefined;
+}
+
+function applyStockViewTitle(stockView: vscode.TreeView<unknown>): void {
+  const tabName = vscode.workspace.getConfiguration("sidebarStock").get<string>("tabName", "Stock").trim();
+  stockView.title = tabName || "Stock";
 }

@@ -114,6 +114,12 @@ export class StockTreeDataProvider
     await this.refresh();
   }
 
+  async addItems(items: StockConfigItem[]): Promise<{ added: number; skipped: number }> {
+    const result = await this.configService.addMany(items);
+    await this.refresh();
+    return result;
+  }
+
   async deleteItem(configId: string): Promise<void> {
     await this.configService.remove(configId);
     await this.refresh();

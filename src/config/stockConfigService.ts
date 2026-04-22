@@ -3,15 +3,21 @@ import { StockConfigItem } from "../models/stock";
 import { normalizeStockConfig, toConfigId } from "../utils/stockCode";
 
 const CONFIG_KEY = "stockCodeList";
+const CONFIG_SECTION = "sidebarStock";
+const LEGACY_CONFIG_SECTION = "stockInvestment";
 const DEFAULT_ITEM: StockConfigItem = { type: "stock", market: "sh", code: "000001" };
 
 export class StockConfigService {
-  private readonly config = vscode.workspace.getConfiguration("stockInvestment");
+  private readonly config = vscode.workspace.getConfiguration(CONFIG_SECTION);
+  private readonly legacyConfig = vscode.workspace.getConfiguration(LEGACY_CONFIG_SECTION);
 
   async load(): Promise<{ items: StockConfigItem[]; migrated: boolean }> {
-    const rawList = this.config.get<unknown[]>(CONFIG_KEY, []);
+    const primaryRawList = this.config.get<unknown[]>(CONFIG_KEY, []);
+    const legacyRawList = this.legacyConfig.get<unknown[]>(CONFIG_KEY, []);
+    const shouldUseLegacy = primaryRawList.length === 0 && legacyRawList.length > 0;
+    const rawList = shouldUseLegacy ? legacyRawList : primaryRawList;
     const normalized: StockConfigItem[] = [];
-    let shouldMigrate = false;
+    let shouldMigrate = shouldUseLegacy;
 
     for (const raw of rawList) {
       if (typeof raw === "string") {
@@ -36,12 +42,32 @@ export class StockConfigService {
   }
 
   async add(item: StockConfigItem): Promise<void> {
-    const { items } = await this.load();
-    const id = toConfigId(item);
-    if (items.some((it) => toConfigId(it) === id)) {
-      throw new Error(`${id} 已存在`);
+    const { added } = await this.addMany([item]);
+    if (added === 0) {
+      throw new Error(`${toConfigId(item)} 已存在`);
     }
-    await this.persist([...items, item]);
+  }
+
+  async addMany(itemsToAdd: StockConfigItem[]): Promise<{ added: number; skipped: number }> {
+    const { items } = await this.load();
+    const existing = new Set(items.map((it) => toConfigId(it)));
+    const incomingSeen = new Set<string>();
+    const append: StockConfigItem[] = [];
+
+    for (const item of itemsToAdd) {
+      const id = toConfigId(item);
+      if (existing.has(id) || incomingSeen.has(id)) {
+        continue;
+      }
+      incomingSeen.add(id);
+      append.push(item);
+    }
+
+    if (append.length > 0) {
+      await this.persist([...items, ...append]);
+    }
+
+    return { added: append.length, skipped: itemsToAdd.length - append.length };
   }
 
   async remove(configId: string): Promise<void> {

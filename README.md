@@ -38,14 +38,16 @@
 
 ## 手动配置
 
-在`VS Code Settings`中配置自选股代码，示例如下：
+在`VS Code Settings`中配置自选股代码与标签名称，示例如下：
 
 ```
-"stockInvestment.stockCodeList": [
+"sidebarStock.tabName": "Sidebar Stock",
+"sidebarStock.stockCodeList": [
         {
             "type": "stock",    //类型 stock股票/sector板块
             "market": "sh",     //股票市场"sz" | "sh" | "hk" | "us";
             "code": "00001",    //股票代码
+            "name": "上证指数",  //可选，自定义显示名称
             "order": 0,         //序号
             "shares": 200,      //持股数（股）
             "costPrice": 20     //成本价
@@ -65,12 +67,12 @@
     ]
 ```
 
+添加股票命令支持批量输入，示例：`000001,000002,600519,300750`（英文逗号分隔）。
+
 ---
 
 ## Todo
 
-1. 支持配置自定义股票名称，支持配置标签栏名称
-2. 股票异动在标签栏提醒
-3. 期货类型支持
-4. 将获取的数据保存在本地，进行一个虚拟k线图渲染
-5. 批量加入股票自选
+1. 股票异动在标签栏提醒
+2. 期货类型支持
+3. 将获取的数据保存在本地，进行一个虚拟k线图渲染

@@ -5,7 +5,7 @@ import { StockItem } from "../tree/stockItem";
 import {
   inferMarket,
   marketQuickPickItems,
-  parseUserStockInput
+  parseUserStockInput,
 } from "../utils/stockCode";
 
 export function registerCommands(
@@ -141,13 +141,19 @@ async function handleAdd(stockDataProvider: StockTreeDataProvider): Promise<void
 
 async function handleAddStock(stockDataProvider: StockTreeDataProvider): Promise<void> {
   const rawCode = await vscode.window.showInputBox({
-    prompt: "输入股票代码（支持仅输入代码，如 600519 / 00700 / AAPL）",
-    placeHolder: "可输入 sh.600519、sz.300316 或仅输入代码",
+    prompt: "输入股票代码（支持逗号分隔批量输入，如 000001,000002,600519）",
+    placeHolder: "可输入 sh.600519、sz.300316、AAPL，多个请用英文逗号分隔",
     validateInput: (value) => {
-      if (!value.trim()) {
+      const parts = splitStockInputs(value);
+      if (parts.length === 0) {
         return "股票代码不能为空";
       }
-      return parseUserStockInput(value) ? null : "格式错误，示例：600519 / sh.600519 / AAPL";
+
+      const hasInvalid = parts.some((part) => !parseUserStockInput(part));
+      if (hasInvalid) {
+        return "格式错误，示例：600519 / sh.600519 / AAPL，多个用英文逗号分隔";
+      }
+      return null;
     },
   });
 
@@ -155,6 +161,19 @@ async function handleAddStock(stockDataProvider: StockTreeDataProvider): Promise
     return;
   }
 
+  const parts = splitStockInputs(rawCode);
+  if (parts.length === 1) {
+    await handleAddSingleStock(stockDataProvider, parts[0]);
+    return;
+  }
+
+  await handleAddBatchStock(stockDataProvider, parts);
+}
+
+async function handleAddSingleStock(
+  stockDataProvider: StockTreeDataProvider,
+  rawCode: string
+): Promise<void> {
   const parsed = parseUserStockInput(rawCode);
   if (!parsed) {
     return;
@@ -220,6 +239,56 @@ async function handleAddStock(stockDataProvider: StockTreeDataProvider): Promise
   }
 }
 
+async function handleAddBatchStock(
+  stockDataProvider: StockTreeDataProvider,
+  parts: string[]
+): Promise<void> {
+  const validItems: StockConfigItem[] = [];
+  const invalidCodes: string[] = [];
+  const unknownMarketCodes: string[] = [];
+
+  for (const part of parts) {
+    const parsed = parseUserStockInput(part);
+    if (!parsed) {
+      invalidCodes.push(part);
+      continue;
+    }
+
+    const market = resolveMarket(parsed.market, parsed.code);
+    if (!market) {
+      unknownMarketCodes.push(part);
+      continue;
+    }
+
+    validItems.push({
+      type: "stock",
+      market,
+      code: parsed.code,
+    });
+  }
+
+  if (validItems.length === 0) {
+    const reasons = [
+      invalidCodes.length > 0 ? `格式错误 ${invalidCodes.length} 项` : "",
+      unknownMarketCodes.length > 0 ? `无法识别市场 ${unknownMarketCodes.length} 项` : "",
+    ]
+      .filter(Boolean)
+      .join("，");
+    vscode.window.showErrorMessage(`批量添加失败：未找到有效股票代码${reasons ? `（${reasons}）` : ""}`);
+    return;
+  }
+
+  const result = await stockDataProvider.addItems(validItems);
+  const messages = [
+    `批量添加完成：新增 ${result.added} 项`,
+    result.skipped > 0 ? `已跳过重复 ${result.skipped} 项` : "",
+    invalidCodes.length > 0 ? `格式错误 ${invalidCodes.length} 项` : "",
+    unknownMarketCodes.length > 0 ? `无法识别市场 ${unknownMarketCodes.length} 项` : "",
+  ].filter(Boolean);
+
+  vscode.window.showInformationMessage(messages.join("，"));
+}
+
 async function handleAddSector(stockDataProvider: StockTreeDataProvider): Promise<void> {
   const name = await vscode.window.showInputBox({
     prompt: "请输入板块 / 指数名称",
@@ -263,4 +332,33 @@ async function chooseMarket(defaultMarket: MarketType): Promise<MarketType | und
     placeHolder: "请确认股票市场（可修改自动识别结果）",
   });
   return picked?.value;
+}
+
+function splitStockInputs(input: string): string[] {
+  return input
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+}
+
+function resolveMarket(explicitMarket: MarketType | undefined, code: string): MarketType | null {
+  if (explicitMarket) {
+    return explicitMarket;
+  }
+
+  const normalized = code.trim().toUpperCase();
+  if (/^688\d{3}$/.test(normalized) || /^60\d{4}$/.test(normalized)) {
+    return "sh";
+  }
+  if (/^(00|30)\d{4}$/.test(normalized)) {
+    return "sz";
+  }
+  if (/^\d{5}$/.test(normalized)) {
+    return "hk";
+  }
+  if (/^[A-Z]+[A-Z0-9.]*$/.test(normalized)) {
+    return "us";
+  }
+
+  return null;
 }
