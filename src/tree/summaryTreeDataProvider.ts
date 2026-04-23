@@ -8,9 +8,11 @@ export class SummaryTreeDataProvider implements vscode.TreeDataProvider<StockIte
 
   private summary: SummaryData = {
     marketValue: 0,
+    floatingProfitLoss: 0,
     dailyProfitLoss: 0,
     updateTime: "--",
     hasHoldings: false,
+    hasFloatingProfitLoss: false,
   };
 
   getTreeItem(element: StockItem): vscode.TreeItem {
@@ -18,6 +20,11 @@ export class SummaryTreeDataProvider implements vscode.TreeDataProvider<StockIte
   }
 
   getChildren(): Thenable<StockItem[]> {
+    const floatingProfitLossText = this.summary.hasFloatingProfitLoss
+      ? this.summary.floatingProfitLoss >= 0
+        ? `+${this.summary.floatingProfitLoss.toFixed(2)}`
+        : this.summary.floatingProfitLoss.toFixed(2)
+      : "--";
     const dailyProfitLossText = this.summary.hasHoldings
       ? this.summary.dailyProfitLoss >= 0
         ? `+${this.summary.dailyProfitLoss.toFixed(2)}`
@@ -30,6 +37,15 @@ export class SummaryTreeDataProvider implements vscode.TreeDataProvider<StockIte
         vscode.TreeItemCollapsibleState.None,
         this.summary.hasHoldings ? this.summary.marketValue.toFixed(2) : "--",
         new vscode.ThemeIcon("graph", new vscode.ThemeColor("charts.blue"))
+      ),
+      new StockItem(
+        "浮动盈亏",
+        vscode.TreeItemCollapsibleState.None,
+        floatingProfitLossText,
+        new vscode.ThemeIcon(
+          this.summary.floatingProfitLoss >= 0 ? "arrow-up" : "arrow-down",
+          new vscode.ThemeColor(this.summary.floatingProfitLoss >= 0 ? "charts.red" : "charts.green")
+        )
       ),
       new StockItem(
         "今日盈亏",

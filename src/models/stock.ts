@@ -30,7 +30,9 @@ export interface HoldingInfo {
 
 export interface SummaryData {
   marketValue: number;
+  floatingProfitLoss: number;
   dailyProfitLoss: number;
   updateTime: string;
   hasHoldings: boolean;
+  hasFloatingProfitLoss: boolean;
 }

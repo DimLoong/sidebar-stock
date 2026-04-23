@@ -18,6 +18,7 @@ import { StockItem } from "./stockItem";
 
 const DND_MIME = "application/vnd.code.tree.stockView";
 const SUMMARY_MARKET_VALUE_ID = "summary:marketValue";
+const SUMMARY_FLOATING_PNL_ID = "summary:floatingProfitLoss";
 const SUMMARY_DAILY_PNL_ID = "summary:dailyProfitLoss";
 const DEV_TEST_STOCK_CODE = "ALERTTEST";
 const DEV_TEST_STOCK_CONFIG_ID = `stock:us.${DEV_TEST_STOCK_CODE}`;
@@ -75,9 +76,11 @@ export class StockTreeDataProvider
     private isLoading = true;
     private summary: SummaryData = {
         marketValue: 0,
+        floatingProfitLoss: 0,
         dailyProfitLoss: 0,
         updateTime: "--",
-        hasHoldings: false
+        hasHoldings: false,
+        hasFloatingProfitLoss: false
     };
     private priceHistory = new Map<string, PricePoint[]>();
     private alertStates = new Map<string, StockAlertState>();
@@ -114,6 +117,9 @@ export class StockTreeDataProvider
         }
         if (element.configId === SUMMARY_MARKET_VALUE_ID) {
             return Promise.resolve(this.getHoldingMarketValueItems());
+        }
+        if (element.configId === SUMMARY_FLOATING_PNL_ID) {
+            return Promise.resolve(this.getHoldingFloatingPnlItems());
         }
         if (element.configId === SUMMARY_DAILY_PNL_ID) {
             return Promise.resolve(this.getHoldingDailyPnlItems());
@@ -443,6 +449,11 @@ export class StockTreeDataProvider
         const marketValueText = this.summary.hasHoldings
             ? this.summary.marketValue.toFixed(2)
             : "--";
+        const floatingProfitLossText = this.summary.hasFloatingProfitLoss
+            ? this.summary.floatingProfitLoss >= 0
+                ? `+${this.summary.floatingProfitLoss.toFixed(2)}`
+                : this.summary.floatingProfitLoss.toFixed(2)
+            : "--";
         const dailyProfitLossText = this.summary.hasHoldings
             ? this.summary.dailyProfitLoss >= 0
                 ? `+${this.summary.dailyProfitLoss.toFixed(2)}`
@@ -459,6 +470,25 @@ export class StockTreeDataProvider
                     new vscode.ThemeColor("charts.blue")
                 ),
                 SUMMARY_MARKET_VALUE_ID,
+                undefined,
+                false,
+                "summaryItem"
+            ),
+            new StockItem(
+                "浮动盈亏",
+                vscode.TreeItemCollapsibleState.Collapsed,
+                floatingProfitLossText,
+                new vscode.ThemeIcon(
+                    this.summary.floatingProfitLoss >= 0
+                        ? "arrow-up"
+                        : "arrow-down",
+                    new vscode.ThemeColor(
+                        this.summary.floatingProfitLoss >= 0
+                            ? "charts.red"
+                            : "charts.green"
+                    )
+                ),
+                SUMMARY_FLOATING_PNL_ID,
                 undefined,
                 false,
                 "summaryItem"
@@ -493,6 +523,56 @@ export class StockTreeDataProvider
                 "summaryItem"
             )
         ];
+    }
+
+    private getHoldingFloatingPnlItems(): StockItem[] {
+        const items: StockItem[] = [];
+
+        for (const [configId, holding] of this.holdings.entries()) {
+            const stockData = this.stocksData.get(configId);
+            const config = this.getConfiguredItem(configId);
+            if (!stockData || !config || holding.shares <= 0) {
+                continue;
+            }
+
+            const floatingPnl = computeHoldingProfitLoss(stockData, holding);
+            if (floatingPnl === null) {
+                continue;
+            }
+            const isUp = floatingPnl >= 0;
+            items.push(
+                new StockItem(
+                    config.name ?? stockData.name ?? config.code,
+                    vscode.TreeItemCollapsibleState.None,
+                    isUp
+                        ? `+${floatingPnl.toFixed(2)}`
+                        : floatingPnl.toFixed(2),
+                    new vscode.ThemeIcon(
+                        isUp ? "arrow-up" : "arrow-down",
+                        new vscode.ThemeColor(
+                            isUp ? "charts.red" : "charts.green"
+                        )
+                    ),
+                    configId,
+                    "stock",
+                    false,
+                    "stockHolding"
+                )
+            );
+        }
+
+        if (items.length === 0) {
+            return [
+                new StockItem(
+                    "暂无可计算浮动盈亏的持仓",
+                    vscode.TreeItemCollapsibleState.None,
+                    "--",
+                    new vscode.ThemeIcon("info")
+                )
+            ];
+        }
+
+        return items;
     }
 
     private getHoldingMarketValueItems(): StockItem[] {
@@ -734,8 +814,10 @@ export class StockTreeDataProvider
 
     private computeSummary(updateTime: string): SummaryData {
         let marketValue = 0;
+        let floatingProfitLoss = 0;
         let dailyProfitLoss = 0;
         let hasHoldings = false;
+        let hasFloatingProfitLoss = false;
 
         for (const [configId, holding] of this.holdings.entries()) {
             const stockData = this.stocksData.get(configId);
@@ -750,9 +832,22 @@ export class StockTreeDataProvider
             const dailyPnL = computeDailyProfitLoss(stockData, holding).value;
             marketValue += currentPrice * holding.shares;
             dailyProfitLoss += dailyPnL;
+
+            const floatingPnl = computeHoldingProfitLoss(stockData, holding);
+            if (floatingPnl !== null) {
+                floatingProfitLoss += floatingPnl;
+                hasFloatingProfitLoss = true;
+            }
         }
 
-        return { marketValue, dailyProfitLoss, updateTime, hasHoldings };
+        return {
+            marketValue,
+            floatingProfitLoss,
+            dailyProfitLoss,
+            updateTime,
+            hasHoldings,
+            hasFloatingProfitLoss
+        };
     }
 
     private updateAlertStates(): void {
