@@ -1,5 +1,7 @@
 # 侧边栏股票看盘工具 Sidebar Stock
 
+一个在 VS Code 侧边栏查看股票、指数、期货和板块行情的插件，支持自选管理、持仓配置和实时盈亏展示。
+
 > 此项目Fork from [coderwang/stock-investment](https://github.com/coderwang/stock-investment)
 
 > 感谢原作者：[@coderwang](https://github.com/coderwang)
