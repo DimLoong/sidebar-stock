@@ -41,11 +41,11 @@
 在`VS Code Settings`中配置自选股代码与标签名称，示例如下：
 
 ```
-"sidebarStock.tabName": "Sidebar Stock",
-"sidebarStock.alerts.enabled": true,
-"sidebarStock.alerts.windowMinutes": 3,
-"sidebarStock.alerts.changePercent": 4,
-"sidebarStock.alerts.cooldownMinutes": 10,
+"sidebarStock.tabName": "Sidebar Stock",    //自定义标签组标题
+"sidebarStock.alerts.enabled": true,        //是否启用异动提示（3分钟内涨跌幅达4%）
+"sidebarStock.alerts.windowMinutes": 3,     //异动监测时间范围/分钟
+"sidebarStock.alerts.changePercent": 4,     //异动监测涨跌幅/%
+"sidebarStock.alerts.cooldownMinutes": 10,  //异动提醒持续时长/分钟
 "sidebarStock.stockCodeList": [
         {
             "type": "stock",    //类型 stock股票/sector板块
