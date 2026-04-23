@@ -63,10 +63,22 @@
             "order": 1
         },
         {
+            "type": "index",
+            "code": "DJI",
+            "name": "道琼斯指数",
+            "order": 2
+        },
+        {
+            "type": "future",
+            "code": "IF0",
+            "name": "沪深300股指主连",
+            "order": 3
+        },
+        {
             "type": "stock",
             "market": "us",
             "code": "AAPL",
-            "order": 3
+            "order": 4
         }
     ]
 ```

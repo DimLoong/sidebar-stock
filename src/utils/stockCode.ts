@@ -37,12 +37,21 @@ export function toConfigId(item: StockConfigItem): string {
   if (item.type === "sector") {
     return `sector:${item.code}`;
   }
+  if (item.type === "index") {
+    return `index:${item.code}`;
+  }
+  if (item.type === "future") {
+    return `future:${item.code}`;
+  }
   return `stock:${item.market}.${item.code}`;
 }
 
 export function toApiSecId(item: StockConfigItem): string {
   if (item.type === "sector") {
     return `90.${item.code}`;
+  }
+  if (item.type === "index" || item.type === "future") {
+    return item.code;
   }
   const marketCode = item.market ? MARKET_TO_API[item.market] : "1";
   return `${marketCode}.${item.code}`;
@@ -60,6 +69,12 @@ export function fromApiSecId(secId: string): { market: MarketType; code: string 
 export function displayTag(item: StockConfigItem): string {
   if (item.type === "sector") {
     return " ［板块］";
+  }
+  if (item.type === "index") {
+    return " ［指数］";
+  }
+  if (item.type === "future") {
+    return " ［期货］";
   }
   switch (item.market) {
     case "hk":
@@ -172,6 +187,16 @@ export function normalizeStockConfig(raw: unknown): StockConfigItem | null {
     const order = Number(obj.order);
     return {
       type: "sector",
+      code,
+      name: obj.name ? String(obj.name).trim() : undefined,
+      order: Number.isFinite(order) && order >= 0 ? Math.floor(order) : undefined,
+    };
+  }
+
+  if (type === "index" || type === "future") {
+    const order = Number(obj.order);
+    return {
+      type,
       code,
       name: obj.name ? String(obj.name).trim() : undefined,
       order: Number.isFinite(order) && order >= 0 ? Math.floor(order) : undefined,

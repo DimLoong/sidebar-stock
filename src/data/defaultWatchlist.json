@@ -21,8 +21,7 @@
         "order": 2
     },
     {
-        "type": "stock",
-        "market": "hk",
+        "type": "index",
         "code": "HSI",
         "name": "恒生指数",
         "order": 3
@@ -42,22 +41,19 @@
         "order": 5
     },
     {
-        "type": "stock",
-        "market": "us",
+        "type": "index",
         "code": "DJI",
         "name": "道琼斯指数",
         "order": 6
     },
     {
-        "type": "stock",
-        "market": "us",
+        "type": "index",
         "code": "IXIC",
-        "name": "纳斯达克指数",
+        "name": "纳斯达克综合指数",
         "order": 7
     },
     {
-        "type": "stock",
-        "market": "us",
+        "type": "index",
         "code": "SPX",
         "name": "标普500",
         "order": 8
@@ -95,5 +91,11 @@
         "code": "886078",
         "name": "商业航天",
         "order": 13
+    },
+    {
+        "type": "future",
+        "code": "IF0",
+        "name": "沪深300股指主连",
+        "order": 14
     }
 ]

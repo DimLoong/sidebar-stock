@@ -1,4 +1,4 @@
-export type StockItemType = "stock" | "sector";
+export type StockItemType = "stock" | "sector" | "index" | "future";
 export type MarketType = "sz" | "sh" | "hk" | "us";
 
 export interface StockData {

@@ -128,7 +128,9 @@ async function handleAdd(stockDataProvider: StockTreeDataProvider): Promise<void
   const typePick = await vscode.window.showQuickPick(
     [
       { label: "股票", value: "stock" as const },
-      { label: "板块 / 指数", value: "sector" as const },
+      { label: "板块", value: "sector" as const },
+      { label: "指数", value: "index" as const },
+      { label: "期货", value: "future" as const },
     ],
     { placeHolder: "请选择要添加的类型" }
   );
@@ -139,6 +141,16 @@ async function handleAdd(stockDataProvider: StockTreeDataProvider): Promise<void
 
   if (typePick.value === "sector") {
     await handleAddSector(stockDataProvider);
+    return;
+  }
+
+  if (typePick.value === "index") {
+    await handleAddIndex(stockDataProvider);
+    return;
+  }
+
+  if (typePick.value === "future") {
+    await handleAddFuture(stockDataProvider);
     return;
   }
 
@@ -314,7 +326,7 @@ async function handleAddBatchStock(
 
 async function handleAddSector(stockDataProvider: StockTreeDataProvider): Promise<void> {
   const name = await vscode.window.showInputBox({
-    prompt: "请输入板块 / 指数名称",
+    prompt: "请输入板块名称",
     placeHolder: "如：航天",
     validateInput: (value) => (value.trim() ? null : "名称不能为空"),
   });
@@ -323,7 +335,7 @@ async function handleAddSector(stockDataProvider: StockTreeDataProvider): Promis
   }
 
   const code = await vscode.window.showInputBox({
-    prompt: "请输入板块 / 指数代码",
+    prompt: "请输入板块代码",
     placeHolder: "如：886078",
     validateInput: (value) => (/^\d+$/.test(value.trim()) ? null : "代码必须为数字"),
   });
@@ -339,7 +351,77 @@ async function handleAddSector(stockDataProvider: StockTreeDataProvider): Promis
 
   try {
     await stockDataProvider.addItem(item);
-    vscode.window.showInformationMessage(`已添加板块/指数 ${item.name}`);
+    vscode.window.showInformationMessage(`已添加板块 ${item.name}`);
+  } catch (error) {
+    vscode.window.showErrorMessage(error instanceof Error ? error.message : "添加失败");
+  }
+}
+
+async function handleAddIndex(stockDataProvider: StockTreeDataProvider): Promise<void> {
+  const name = await vscode.window.showInputBox({
+    prompt: "请输入指数名称（可选）",
+    placeHolder: "如：道琼斯指数（留空则使用接口名称）",
+  });
+  if (name === undefined) {
+    return;
+  }
+
+  const code = await vscode.window.showInputBox({
+    prompt: "请输入指数代码",
+    placeHolder: "如：DJI / IXIC / SPX / HSI",
+    validateInput: (value) =>
+      /^[A-Za-z][A-Za-z0-9_]{1,15}$/.test(value.trim())
+        ? null
+        : "指数代码格式错误，示例：DJI / IXIC / SPX / HSI",
+  });
+  if (code === undefined) {
+    return;
+  }
+
+  const item: StockConfigItem = {
+    type: "index",
+    code: code.trim().toUpperCase(),
+    name: name.trim() || undefined,
+  };
+
+  try {
+    await stockDataProvider.addItem(item);
+    vscode.window.showInformationMessage(`已添加指数 ${item.name ?? item.code}`);
+  } catch (error) {
+    vscode.window.showErrorMessage(error instanceof Error ? error.message : "添加失败");
+  }
+}
+
+async function handleAddFuture(stockDataProvider: StockTreeDataProvider): Promise<void> {
+  const name = await vscode.window.showInputBox({
+    prompt: "请输入期货名称（可选）",
+    placeHolder: "如：沪深300股指主连（留空则使用接口名称）",
+  });
+  if (name === undefined) {
+    return;
+  }
+
+  const code = await vscode.window.showInputBox({
+    prompt: "请输入期货代码",
+    placeHolder: "如：IF0 / AU0 / RB0",
+    validateInput: (value) =>
+      /^[A-Za-z]{1,6}\d{0,4}$/.test(value.trim())
+        ? null
+        : "期货代码格式错误，示例：IF0 / AU0 / RB0",
+  });
+  if (code === undefined) {
+    return;
+  }
+
+  const item: StockConfigItem = {
+    type: "future",
+    code: code.trim().toUpperCase(),
+    name: name.trim() || undefined,
+  };
+
+  try {
+    await stockDataProvider.addItem(item);
+    vscode.window.showInformationMessage(`已添加期货 ${item.name ?? item.code}`);
   } catch (error) {
     vscode.window.showErrorMessage(error instanceof Error ? error.message : "添加失败");
   }

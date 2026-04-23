@@ -172,7 +172,7 @@ export class StockTreeDataProvider
     let upCount = 0;
     let downCount = 0;
     for (const item of this.stockItems) {
-      if (item.type !== "stock") {
+      if (item.type === "sector") {
         continue;
       }
       const state = this.alertStates.get(toConfigId(item));
@@ -225,6 +225,8 @@ export class StockTreeDataProvider
   private async fetchAllStockData(): Promise<void> {
     const stockRequestIds: string[] = [];
     const sectorCodes: string[] = [];
+    const indexCodes: string[] = [];
+    const futureCodes: string[] = [];
     this.apiToConfigId.clear();
 
     for (const item of this.stockItems) {
@@ -235,6 +237,14 @@ export class StockTreeDataProvider
         sectorCodes.push(item.code);
         continue;
       }
+      if (item.type === "index") {
+        indexCodes.push(item.code);
+        continue;
+      }
+      if (item.type === "future") {
+        futureCodes.push(item.code);
+        continue;
+      }
 
       const apiSecId = toApiSecId(item);
       stockRequestIds.push(apiSecId);
@@ -242,12 +252,18 @@ export class StockTreeDataProvider
     }
 
     const updateTime = new Date().toLocaleTimeString("zh-CN");
-    const [stockApiData, sectorApiData] = await Promise.all([
+    const [stockApiData, sectorApiData, indexApiData, futureApiData] = await Promise.all([
       stockRequestIds.length > 0
         ? this.apiService.fetchBatchStocks(stockRequestIds, updateTime)
         : Promise.resolve(new Map<string, StockData>()),
       sectorCodes.length > 0
         ? this.apiService.fetchBatchSectors(sectorCodes, updateTime)
+        : Promise.resolve(new Map<string, StockData>()),
+      indexCodes.length > 0
+        ? this.apiService.fetchBatchIndices(indexCodes, updateTime)
+        : Promise.resolve(new Map<string, StockData>()),
+      futureCodes.length > 0
+        ? this.apiService.fetchBatchFutures(futureCodes, updateTime)
         : Promise.resolve(new Map<string, StockData>()),
     ]);
 
@@ -261,6 +277,12 @@ export class StockTreeDataProvider
 
     for (const [sectorCode, sectorData] of sectorApiData.entries()) {
       this.stocksData.set(`sector:${sectorCode}`, sectorData);
+    }
+    for (const [indexCode, indexData] of indexApiData.entries()) {
+      this.stocksData.set(`index:${indexCode}`, indexData);
+    }
+    for (const [futureCode, futureData] of futureApiData.entries()) {
+      this.stocksData.set(`future:${futureCode}`, futureData);
     }
 
     if (this.devConfig.devMode && this.devConfig.alertTestStockEnabled) {
@@ -309,13 +331,14 @@ export class StockTreeDataProvider
 
       const changeNum = Number.parseFloat(stockData.change);
       const arrow = changeNum >= 0 ? "↑" : "↓";
-      const alertState = config.type === "stock" ? this.alertStates.get(configId) : undefined;
+      const alertState = config.type === "sector" ? undefined : this.alertStates.get(configId);
       const isAlertUp = alertState?.type === "surgeUp";
       const isAlertDown = alertState?.type === "surgeDown";
       const alertPrefix = isAlertUp ? "⇧⇧ " : isAlertDown ? "⇩⇩ " : "";
       const contextValue = this.isDevTestStock(config) ? "devTestStock" : undefined;
       const isSector = config.type === "sector";
-      const isIndex = this.isIndexLikeStock(config, stockData);
+      const isIndex = config.type === "index" || this.isIndexLikeStock(config, stockData);
+      const isFuture = config.type === "future";
       const color =
         isAlertUp
           ? new vscode.ThemeColor("charts.red")
@@ -332,6 +355,8 @@ export class StockTreeDataProvider
           ? new vscode.ThemeIcon("symbol-namespace", color)
           : isIndex
             ? new vscode.ThemeIcon("graph", color)
+            : isFuture
+              ? new vscode.ThemeIcon("pulse", color)
             : new vscode.ThemeIcon(isAlertUp ? "arrow-up" : isAlertDown ? "arrow-down" : "circle-filled", color);
 
       return new StockItem(
@@ -506,10 +531,6 @@ export class StockTreeDataProvider
       ),
     ];
 
-    if (config.type !== "stock") {
-      return items;
-    }
-
     const alertState = this.alertStates.get(configId);
     if (alertState && alertState.type !== "none") {
       const isUpAlert = alertState.type === "surgeUp";
@@ -526,6 +547,10 @@ export class StockTreeDataProvider
           )
         )
       );
+    }
+
+    if (config.type !== "stock") {
+      return items;
     }
 
     const holding = this.holdings.get(configId);
@@ -613,7 +638,7 @@ export class StockTreeDataProvider
     const keepHistoryMs = Math.max(windowMs, cooldownMs) + 2 * 60 * 1000;
     const configuredStockIds = new Set(
       this.stockItems
-        .filter((item) => item.type === "stock")
+        .filter((item) => item.type === "stock" || item.type === "index" || item.type === "future")
         .map((item) => toConfigId(item))
     );
 
@@ -795,7 +820,9 @@ export class StockTreeDataProvider
 
   private pruneStateForConfiguredItems(): void {
     const configuredStockIds = new Set(
-      this.stockItems.filter((item) => item.type === "stock").map((item) => toConfigId(item))
+      this.stockItems
+        .filter((item) => item.type === "stock" || item.type === "index" || item.type === "future")
+        .map((item) => toConfigId(item))
     );
     for (const stockId of this.alertStates.keys()) {
       if (!configuredStockIds.has(stockId)) {

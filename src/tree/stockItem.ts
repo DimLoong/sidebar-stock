@@ -23,7 +23,15 @@ export class StockItem extends vscode.TreeItem {
     }
 
     if (isRoot && configId) {
-      this.contextValue = itemType === "sector" ? "sectorRoot" : "stockRoot";
+      if (itemType === "sector") {
+        this.contextValue = "sectorRoot";
+      } else if (itemType === "index") {
+        this.contextValue = "indexRoot";
+      } else if (itemType === "future") {
+        this.contextValue = "futureRoot";
+      } else {
+        this.contextValue = "stockRoot";
+      }
     }
   }
 }
