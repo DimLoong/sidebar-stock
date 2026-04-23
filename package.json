@@ -52,6 +52,39 @@
                     "default": "Stock",
                     "description": "Sidebar Stock 侧边栏标签页名称（仅影响视图标题）"
                 },
+                "sidebarStock.alerts.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "是否开启短时异动提醒"
+                },
+                "sidebarStock.alerts.windowMinutes": {
+                    "type": "number",
+                    "default": 3,
+                    "minimum": 1,
+                    "description": "异动检测滚动窗口（分钟）"
+                },
+                "sidebarStock.alerts.changePercent": {
+                    "type": "number",
+                    "default": 4,
+                    "minimum": 0.5,
+                    "description": "异动触发阈值（百分比）"
+                },
+                "sidebarStock.alerts.cooldownMinutes": {
+                    "type": "number",
+                    "default": 10,
+                    "minimum": 1,
+                    "description": "同一只股票异动提醒冷却时长（分钟）"
+                },
+                "sidebarStock.devMode": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "开发者模式开关"
+                },
+                "sidebarStock.dev.alertTestStockEnabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "开发者模式：注入异动测试股票（虚拟数据）"
+                },
                 "stockInvestment.stockCodeList": {
                     "type": "array",
                     "default": [],
@@ -66,6 +99,33 @@
                             }
                         ]
                     },
+                    "description": "旧版配置项，保留兼容。"
+                },
+                "stockInvestment.alerts.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "deprecationMessage": "此配置项已弃用，请使用 sidebarStock.alerts.enabled",
+                    "description": "旧版配置项，保留兼容。"
+                },
+                "stockInvestment.alerts.windowMinutes": {
+                    "type": "number",
+                    "default": 3,
+                    "minimum": 1,
+                    "deprecationMessage": "此配置项已弃用，请使用 sidebarStock.alerts.windowMinutes",
+                    "description": "旧版配置项，保留兼容。"
+                },
+                "stockInvestment.alerts.changePercent": {
+                    "type": "number",
+                    "default": 4,
+                    "minimum": 0.5,
+                    "deprecationMessage": "此配置项已弃用，请使用 sidebarStock.alerts.changePercent",
+                    "description": "旧版配置项，保留兼容。"
+                },
+                "stockInvestment.alerts.cooldownMinutes": {
+                    "type": "number",
+                    "default": 10,
+                    "minimum": 1,
+                    "deprecationMessage": "此配置项已弃用，请使用 sidebarStock.alerts.cooldownMinutes",
                     "description": "旧版配置项，保留兼容。"
                 }
             }

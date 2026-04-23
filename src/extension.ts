@@ -9,6 +9,7 @@ const REFRESH_INTERVAL = 3000;
 const STOCK_CONFIG_SECTION = "sidebarStock";
 const STOCK_CONFIG_KEY = "sidebarStock.stockCodeList";
 const LEGACY_STOCK_CONFIG_KEY = "stockInvestment.stockCodeList";
+const LEGACY_ALERTS_SECTION = "stockInvestment.alerts";
 const TAB_NAME_KEY = "sidebarStock.tabName";
 
 let autoRefreshService: AutoRefreshService | undefined;
@@ -26,10 +27,12 @@ export async function activate(context: vscode.ExtensionContext) {
     showCollapseAll: false,
     dragAndDropController: stockDataProvider,
   });
-  applyStockViewTitle(stockView);
+  applyStockViewStatus(stockView, stockDataProvider);
 
   autoRefreshService.start(() => {
-    stockDataProvider.refresh();
+    stockDataProvider.refresh().then(() => {
+      applyStockViewStatus(stockView, stockDataProvider);
+    });
   }, REFRESH_INTERVAL);
 
   const configChangeListener = vscode.workspace.onDidChangeConfiguration(async (e) => {
@@ -37,17 +40,21 @@ export async function activate(context: vscode.ExtensionContext) {
     if (
       affectsSidebarStock ||
       e.affectsConfiguration(STOCK_CONFIG_KEY) ||
-      e.affectsConfiguration(LEGACY_STOCK_CONFIG_KEY)
+      e.affectsConfiguration(LEGACY_STOCK_CONFIG_KEY) ||
+      e.affectsConfiguration(LEGACY_ALERTS_SECTION)
     ) {
       await stockDataProvider.refresh();
     }
     if (affectsSidebarStock || e.affectsConfiguration(TAB_NAME_KEY)) {
-      applyStockViewTitle(stockView);
+      applyStockViewStatus(stockView, stockDataProvider);
     }
+  });
+  const alertChangeListener = stockDataProvider.onDidChangeAlerts(() => {
+    applyStockViewStatus(stockView, stockDataProvider);
   });
 
   registerCommands(context, stockDataProvider);
-  context.subscriptions.push(stockView, configChangeListener);
+  context.subscriptions.push(stockView, configChangeListener, alertChangeListener);
 }
 
 export function deactivate() {
@@ -55,7 +62,20 @@ export function deactivate() {
   autoRefreshService = undefined;
 }
 
-function applyStockViewTitle(stockView: vscode.TreeView<unknown>): void {
+function applyStockViewStatus(stockView: vscode.TreeView<unknown>, provider: StockTreeDataProvider): void {
   const tabName = vscode.workspace.getConfiguration("sidebarStock").get<string>("tabName", "Stock").trim();
-  stockView.title = tabName || "Stock";
+  const baseTitle = tabName || "Stock";
+  const overview = provider.getAlertOverview();
+  const suffix =
+    overview.dominant === "surgeUp" ? " ⇧⇧" : overview.dominant === "surgeDown" ? " ⇩⇩" : "";
+  stockView.title = `${baseTitle}${suffix}`;
+
+  const total = overview.upCount + overview.downCount;
+  stockView.badge =
+    total > 0
+      ? {
+          value: total,
+          tooltip: `异动提醒：上涨 ${overview.upCount}，下跌 ${overview.downCount}`,
+        }
+      : undefined;
 }

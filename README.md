@@ -42,6 +42,10 @@
 
 ```
 "sidebarStock.tabName": "Sidebar Stock",
+"sidebarStock.alerts.enabled": true,
+"sidebarStock.alerts.windowMinutes": 3,
+"sidebarStock.alerts.changePercent": 4,
+"sidebarStock.alerts.cooldownMinutes": 10,
 "sidebarStock.stockCodeList": [
         {
             "type": "stock",    //类型 stock股票/sector板块
@@ -68,6 +72,19 @@
 ```
 
 添加股票命令支持批量输入，示例：`000001,000002,600519,300750`（英文逗号分隔）。
+
+## 股票异动
+
+异动提醒默认开启：当股票在任意连续 3 分钟内涨跌幅达到 4% 时触发提醒，并按 `cooldownMinutes` 控制提醒持续时间与防抖。
+
+开发者测试异动可开启：
+
+```json
+"sidebarStock.devMode": true,
+"sidebarStock.dev.alertTestStockEnabled": true
+```
+
+开启后会自动注入一只 `[DEV] 异动测试股`（虚拟行情数据，不依赖后端接口），用于快速验证列表异动高亮、展开提示、标签栏提醒。
 
 ---
 

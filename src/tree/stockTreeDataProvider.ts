@@ -8,12 +8,49 @@ import { StockItem } from "./stockItem";
 const DND_MIME = "application/vnd.code.tree.stockView";
 const SUMMARY_MARKET_VALUE_ID = "summary:marketValue";
 const SUMMARY_DAILY_PNL_ID = "summary:dailyProfitLoss";
+const DEV_TEST_STOCK_CODE = "ALERTTEST";
+const DEV_TEST_STOCK_CONFIG_ID = `stock:us.${DEV_TEST_STOCK_CODE}`;
+
+type AlertStateType = "none" | "surgeUp" | "surgeDown";
+
+interface AlertConfig {
+  enabled: boolean;
+  windowMinutes: number;
+  changePercent: number;
+  cooldownMinutes: number;
+}
+
+interface DevConfig {
+  devMode: boolean;
+  alertTestStockEnabled: boolean;
+}
+
+interface PricePoint {
+  timestamp: number;
+  price: number;
+}
+
+interface StockAlertState {
+  type: AlertStateType;
+  changePercent: number;
+  windowStart: number;
+  windowEnd: number;
+  activeUntil: number;
+}
+
+export interface AlertOverview {
+  upCount: number;
+  downCount: number;
+  dominant: AlertStateType;
+}
 
 export class StockTreeDataProvider
   implements vscode.TreeDataProvider<StockItem>, vscode.TreeDragAndDropController<StockItem>
 {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+  private readonly _onDidChangeAlerts = new vscode.EventEmitter<void>();
+  readonly onDidChangeAlerts = this._onDidChangeAlerts.event;
 
   readonly dropMimeTypes = [DND_MIME];
   readonly dragMimeTypes = [DND_MIME];
@@ -29,6 +66,20 @@ export class StockTreeDataProvider
     updateTime: "--",
     hasHoldings: false,
   };
+  private priceHistory = new Map<string, PricePoint[]>();
+  private alertStates = new Map<string, StockAlertState>();
+  private alertConfig: AlertConfig = {
+    enabled: true,
+    windowMinutes: 3,
+    changePercent: 4,
+    cooldownMinutes: 10,
+  };
+  private devConfig: DevConfig = {
+    devMode: false,
+    alertTestStockEnabled: false,
+  };
+  private devTick = 0;
+  private devLastPrice = 100;
 
   constructor(
     private readonly configService: StockConfigService,
@@ -117,6 +168,27 @@ export class StockTreeDataProvider
     return this.stockItems.find((item) => toConfigId(item) === configId);
   }
 
+  getAlertOverview(): AlertOverview {
+    let upCount = 0;
+    let downCount = 0;
+    for (const item of this.stockItems) {
+      if (item.type !== "stock") {
+        continue;
+      }
+      const state = this.alertStates.get(toConfigId(item));
+      if (state?.type === "surgeUp") {
+        upCount += 1;
+      } else if (state?.type === "surgeDown") {
+        downCount += 1;
+      }
+    }
+
+    const dominant: AlertStateType =
+      upCount === 0 && downCount === 0 ? "none" : upCount >= downCount ? "surgeUp" : "surgeDown";
+
+    return { upCount, downCount, dominant };
+  }
+
   async addItem(item: StockConfigItem): Promise<void> {
     await this.configService.add(item);
     await this.refresh();
@@ -140,8 +212,11 @@ export class StockTreeDataProvider
 
   private async loadStockCodes(): Promise<void> {
     const { items, migrated } = await this.configService.load();
-    this.stockItems = items;
+    this.devConfig = this.getDevConfig();
+    this.stockItems = this.applyDevTestStock(items);
     this.holdings = toHoldingMap(items);
+    this.alertConfig = this.getAlertConfig();
+    this.pruneStateForConfiguredItems();
     if (migrated) {
       vscode.window.showInformationMessage("已自动将旧版股票配置迁移为 JSON 结构");
     }
@@ -153,6 +228,9 @@ export class StockTreeDataProvider
     this.apiToConfigId.clear();
 
     for (const item of this.stockItems) {
+      if (this.isDevTestStock(item)) {
+        continue;
+      }
       if (item.type === "sector") {
         sectorCodes.push(item.code);
         continue;
@@ -185,8 +263,14 @@ export class StockTreeDataProvider
       this.stocksData.set(`sector:${sectorCode}`, sectorData);
     }
 
+    if (this.devConfig.devMode && this.devConfig.alertTestStockEnabled) {
+      this.stocksData.set(DEV_TEST_STOCK_CONFIG_ID, this.buildDevTestStockData(updateTime));
+    }
+
+    this.updateAlertStates();
     this.isLoading = false;
     this.summary = this.computeSummary(updateTime);
+    this._onDidChangeAlerts.fire();
     this._onDidChangeTreeData.fire();
   }
 
@@ -223,21 +307,31 @@ export class StockTreeDataProvider
 
       const changeNum = Number.parseFloat(stockData.change);
       const arrow = changeNum >= 0 ? "↑" : "↓";
+      const alertState = config.type === "stock" ? this.alertStates.get(configId) : undefined;
+      const isAlertUp = alertState?.type === "surgeUp";
+      const isAlertDown = alertState?.type === "surgeDown";
+      const alertPrefix = isAlertUp ? "⇧⇧ " : isAlertDown ? "⇩⇩ " : "";
+      const contextValue = this.isDevTestStock(config) ? "devTestStock" : undefined;
       const color =
-        changeNum > 0
+        isAlertUp
+          ? new vscode.ThemeColor("charts.red")
+          : isAlertDown
+            ? new vscode.ThemeColor("charts.green")
+            : changeNum > 0
           ? new vscode.ThemeColor("charts.red")
           : changeNum < 0
             ? new vscode.ThemeColor("charts.green")
             : new vscode.ThemeColor("disabledForeground");
 
       return new StockItem(
-        config.name ?? stockData.name,
+        `${alertPrefix}${config.name ?? stockData.name}`,
         vscode.TreeItemCollapsibleState.Collapsed,
-        `${stockData.current} ${arrow} ${stockData.changePercent}%${displayTag(config)}`,
-        new vscode.ThemeIcon("circle-filled", color),
+        `${stockData.current} ${arrow} ${stockData.changePercent}%${displayTag(config)}${this.alertHintText(alertState)}`,
+        new vscode.ThemeIcon(isAlertUp ? "arrow-up" : isAlertDown ? "arrow-down" : "circle-filled", color),
         configId,
         config.type,
-        true
+        true,
+        contextValue
       );
     });
 
@@ -405,6 +499,24 @@ export class StockTreeDataProvider
       return items;
     }
 
+    const alertState = this.alertStates.get(configId);
+    if (alertState && alertState.type !== "none") {
+      const isUpAlert = alertState.type === "surgeUp";
+      const startTime = new Date(alertState.windowStart).toLocaleTimeString("zh-CN");
+      const endTime = new Date(alertState.windowEnd).toLocaleTimeString("zh-CN");
+      items.unshift(
+        new StockItem(
+          "异动提醒",
+          vscode.TreeItemCollapsibleState.None,
+          `${startTime}-${endTime} ${isUpAlert ? "上涨" : "下跌"} ${alertState.changePercent.toFixed(2)}%`,
+          new vscode.ThemeIcon(
+            isUpAlert ? "arrow-up" : "arrow-down",
+            new vscode.ThemeColor(isUpAlert ? "charts.red" : "charts.green")
+          )
+        )
+      );
+    }
+
     const holding = this.holdings.get(configId);
     if (holding?.shares && holding.shares > 0) {
       items.push(
@@ -478,8 +590,229 @@ export class StockTreeDataProvider
     return { marketValue, dailyProfitLoss, updateTime, hasHoldings };
   }
 
+  private updateAlertStates(): void {
+    if (!this.alertConfig.enabled) {
+      this.alertStates.clear();
+      return;
+    }
+
+    const now = Date.now();
+    const windowMs = this.alertConfig.windowMinutes * 60 * 1000;
+    const cooldownMs = this.alertConfig.cooldownMinutes * 60 * 1000;
+    const keepHistoryMs = Math.max(windowMs, cooldownMs) + 2 * 60 * 1000;
+    const configuredStockIds = new Set(
+      this.stockItems
+        .filter((item) => item.type === "stock")
+        .map((item) => toConfigId(item))
+    );
+
+    for (const stockId of configuredStockIds) {
+      const stockData = this.stocksData.get(stockId);
+      if (!stockData) {
+        continue;
+      }
+
+      const current = Number.parseFloat(stockData.current);
+      if (!Number.isFinite(current) || current <= 0) {
+        continue;
+      }
+
+      const history = this.priceHistory.get(stockId) ?? [];
+      history.push({ timestamp: now, price: current });
+      const trimmedHistory = history.filter((point) => now - point.timestamp <= keepHistoryMs);
+      this.priceHistory.set(stockId, trimmedHistory);
+
+      const pointsInWindow = trimmedHistory.filter((point) => now - point.timestamp <= windowMs);
+      const minPoint = pointsInWindow.reduce<PricePoint | undefined>(
+        (acc, point) => (acc === undefined || point.price < acc.price ? point : acc),
+        undefined
+      );
+      const maxPoint = pointsInWindow.reduce<PricePoint | undefined>(
+        (acc, point) => (acc === undefined || point.price > acc.price ? point : acc),
+        undefined
+      );
+
+      const upChangePercent =
+        minPoint && minPoint.price > 0 ? ((current - minPoint.price) / minPoint.price) * 100 : 0;
+      const downChangePercent =
+        maxPoint && maxPoint.price > 0 ? ((current - maxPoint.price) / maxPoint.price) * 100 : 0;
+
+      let nextType: AlertStateType = "none";
+      let magnitude = 0;
+      let windowStart = now;
+
+      if (upChangePercent >= this.alertConfig.changePercent || downChangePercent <= -this.alertConfig.changePercent) {
+        if (upChangePercent >= Math.abs(downChangePercent)) {
+          nextType = "surgeUp";
+          magnitude = upChangePercent;
+          windowStart = minPoint?.timestamp ?? now;
+        } else {
+          nextType = "surgeDown";
+          magnitude = Math.abs(downChangePercent);
+          windowStart = maxPoint?.timestamp ?? now;
+        }
+      }
+
+      const previous = this.alertStates.get(stockId);
+      if (nextType === "none") {
+        if (previous && previous.activeUntil > now) {
+          this.alertStates.set(stockId, previous);
+        } else {
+          this.alertStates.delete(stockId);
+        }
+        continue;
+      }
+
+      this.alertStates.set(stockId, {
+        type: nextType,
+        changePercent: magnitude,
+        windowStart,
+        windowEnd: now,
+        activeUntil: now + cooldownMs,
+      });
+    }
+
+    for (const [stockId, state] of this.alertStates.entries()) {
+      if (!configuredStockIds.has(stockId) || state.activeUntil <= now) {
+        this.alertStates.delete(stockId);
+      }
+    }
+
+    for (const stockId of this.priceHistory.keys()) {
+      if (!configuredStockIds.has(stockId)) {
+        this.priceHistory.delete(stockId);
+      }
+    }
+  }
+
+  private getAlertConfig(): AlertConfig {
+    const enabled = this.readAlertSetting("enabled", true);
+    const windowMinutes = Math.max(1, this.readAlertSetting("windowMinutes", 3));
+    const changePercent = Math.max(0.5, this.readAlertSetting("changePercent", 4));
+    const cooldownMinutes = Math.max(1, this.readAlertSetting("cooldownMinutes", 10));
+
+    return {
+      enabled: Boolean(enabled),
+      windowMinutes,
+      changePercent,
+      cooldownMinutes,
+    };
+  }
+
+  private readAlertSetting<T extends boolean | number>(key: string, defaultValue: T): T {
+    const section = "sidebarStock";
+    const legacySection = "stockInvestment";
+    const path = `alerts.${key}`;
+    const config = vscode.workspace.getConfiguration(section);
+    const legacyConfig = vscode.workspace.getConfiguration(legacySection);
+
+    const inspected = config.inspect<T>(path);
+    const hasPrimaryValue =
+      inspected?.workspaceFolderValue !== undefined ||
+      inspected?.workspaceValue !== undefined ||
+      inspected?.globalValue !== undefined;
+    if (hasPrimaryValue) {
+      return config.get<T>(path, defaultValue);
+    }
+
+    const legacyInspected = legacyConfig.inspect<T>(path);
+    const hasLegacyValue =
+      legacyInspected?.workspaceFolderValue !== undefined ||
+      legacyInspected?.workspaceValue !== undefined ||
+      legacyInspected?.globalValue !== undefined;
+    if (hasLegacyValue) {
+      return legacyConfig.get<T>(path, defaultValue);
+    }
+
+    return config.get<T>(path, defaultValue);
+  }
+
+  private getDevConfig(): DevConfig {
+    const cfg = vscode.workspace.getConfiguration("sidebarStock");
+    return {
+      devMode: cfg.get<boolean>("devMode", false),
+      alertTestStockEnabled: cfg.get<boolean>("dev.alertTestStockEnabled", false),
+    };
+  }
+
+  private applyDevTestStock(items: StockConfigItem[]): StockConfigItem[] {
+    if (!this.devConfig.devMode || !this.devConfig.alertTestStockEnabled) {
+      return items;
+    }
+
+    if (items.some((item) => toConfigId(item) === DEV_TEST_STOCK_CONFIG_ID)) {
+      return items;
+    }
+
+    return [
+      {
+        type: "stock",
+        market: "us",
+        code: DEV_TEST_STOCK_CODE,
+        name: "[DEV] 异动测试股",
+        order: -1,
+      },
+      ...items,
+    ];
+  }
+
+  private isDevTestStock(item: StockConfigItem): boolean {
+    return item.type === "stock" && item.market === "us" && item.code === DEV_TEST_STOCK_CODE;
+  }
+
+  private buildDevTestStockData(updateTime: string): StockData {
+    this.devTick += 1;
+    const cycle = this.devTick % 40;
+    const ratio = cycle < 20 ? cycle / 20 : (40 - cycle) / 20;
+    const current = 100 * (1 + (ratio * 0.12 - 0.06));
+
+    const previousClose = this.devLastPrice;
+    const change = current - previousClose;
+    const changePercent = previousClose === 0 ? 0 : (change / previousClose) * 100;
+    this.devLastPrice = current;
+
+    return {
+      code: `105.${DEV_TEST_STOCK_CODE}`,
+      name: "[DEV] 异动测试股",
+      current: current.toFixed(3),
+      change: change.toFixed(3),
+      changePercent: changePercent.toFixed(2),
+      previousClose: previousClose.toFixed(3),
+      updateTime,
+    };
+  }
+
+  private pruneStateForConfiguredItems(): void {
+    const configuredStockIds = new Set(
+      this.stockItems.filter((item) => item.type === "stock").map((item) => toConfigId(item))
+    );
+    for (const stockId of this.alertStates.keys()) {
+      if (!configuredStockIds.has(stockId)) {
+        this.alertStates.delete(stockId);
+      }
+    }
+    for (const stockId of this.priceHistory.keys()) {
+      if (!configuredStockIds.has(stockId)) {
+        this.priceHistory.delete(stockId);
+      }
+    }
+
+    if (!configuredStockIds.has(DEV_TEST_STOCK_CONFIG_ID)) {
+      this.devTick = 0;
+      this.devLastPrice = 100;
+    }
+  }
+
+  private alertHintText(state?: StockAlertState): string {
+    if (!state || state.type === "none") {
+      return "";
+    }
+    const direction = state.type === "surgeUp" ? "异动⇧⇧" : "异动⇩⇩";
+    return `  ${direction}${state.changePercent.toFixed(2)}%`;
+  }
+
   private isSortableRoot(item: StockItem | undefined): item is StockItem {
-    return Boolean(item?.isRoot && item.configId);
+    return Boolean(item?.isRoot && item.configId && item.configId !== DEV_TEST_STOCK_CONFIG_ID);
   }
 
   private buildReorderedIds(
