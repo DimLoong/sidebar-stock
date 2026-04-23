@@ -10,7 +10,7 @@
 
 在侧边栏中展示自选股涨跌情况，每隔3秒自动刷新，示例如下：
 
-<img src="./src/assets/img-0.png" alt="示例图" width="40%">
+<img src="./src/assets/img-0.webp" alt="示例图" width="40%">
 
 ---
 
@@ -20,23 +20,23 @@
 
 点击标签栏右侧加号进行新增自选股票，支持A股，美股，板块
 
-<img src="./src/assets/img-1.png" alt="操作示例" width="60%">
+<img src="./src/assets/img-1.webp" alt="操作示例" width="60%">
 
 输入股票代码
 
-<img src="./src/assets/img-2.png" alt="操作示例" width="60%">
+<img src="./src/assets/img-2.webp" alt="操作示例" width="60%">
 
 自动识别股票市场
 
-<img src="./src/assets/img-3.png" alt="操作示例" width="60%">
+<img src="./src/assets/img-3.webp" alt="操作示例" width="60%">
 
 [可选] 输入持仓数（股）
 
-<img src="./src/assets/img-4.png" alt="操作示例" width="60%">
+<img src="./src/assets/img-4.webp" alt="操作示例" width="60%">
 
 [可选] 输入持仓成本
 
-<img src="./src/assets/img-5.png" alt="操作示例" width="60%">
+<img src="./src/assets/img-5.webp" alt="操作示例" width="60%">
 
 ## 手动配置
 
@@ -90,9 +90,9 @@
 
 - 持仓盈亏：`(现价 - 成本价) × 持仓数量`
 - 今日盈亏：
-    - 未设置 `costDate` 或 `costDate` 早于今天：按市场口径 `(现价 - 昨收价) × 持仓数量`
-    - `costDate` 为今天：按 `(现价 - 成本价) × 持仓数量`
-    - `costDate` 非法或晚于今天：自动降级为市场口径（不会导致插件报错）
+  - 未设置 `costDate` 或 `costDate` 早于今天：按市场口径 `(现价 - 昨收价) × 持仓数量`
+  - `costDate` 为今天：按 `(现价 - 成本价) × 持仓数量`
+  - `costDate` 非法或晚于今天：自动降级为市场口径（不会导致插件报错）
 
 ## 股票异动
 
