@@ -19,8 +19,20 @@
     },
     {
         "type": "index",
-        "code": "HSI",
-        "name": "恒生指数"
+        "code": "HSI"
+    },
+    {
+        "type": "sector",
+        "code": "886078",
+        "name": "商业航天"
+    },
+    {
+        "type": "future",
+        "code": "XAU"
+    },
+    {
+        "type": "future",
+        "code": "CL"
     },
     {
         "type": "stock",
@@ -42,7 +54,7 @@
     {
         "type": "index",
         "code": "IXIC",
-        "name": "纳斯达克综合指数"
+        "name": "纳斯达克指数"
     },
     {
         "type": "index",
@@ -53,7 +65,9 @@
         "type": "stock",
         "market": "us",
         "code": "AAPL",
-        "name": "Apple"
+        "name": "Apple",
+        "shares": 400,
+        "costPrice": 260
     },
     {
         "type": "stock",
@@ -72,15 +86,5 @@
         "market": "us",
         "code": "MSFT",
         "name": "Microsoft"
-    },
-    {
-        "type": "sector",
-        "code": "886078",
-        "name": "商业航天"
-    },
-    {
-        "type": "future",
-        "code": "IF0",
-        "name": "沪深300股指主连"
     }
 ]

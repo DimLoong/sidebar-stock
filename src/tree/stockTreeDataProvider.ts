@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { StockApiService } from "../api/stockApiService";
+import { QuoteErrorInfo } from "../api/providers/types";
 import { StockConfigService } from "../config/stockConfigService";
 import {
     HoldingInfo,
@@ -73,6 +74,7 @@ export class StockTreeDataProvider
     private stockItems: StockConfigItem[] = [];
     private holdings = new Map<string, HoldingInfo>();
     private apiToConfigId = new Map<string, string>();
+    private quoteErrors = new Map<string, QuoteErrorInfo>();
     private isLoading = true;
     private summary: SummaryData = {
         marketValue: 0,
@@ -96,6 +98,8 @@ export class StockTreeDataProvider
     };
     private devTick = 0;
     private devLastPrice = 100;
+    private refreshInFlight: Promise<void> | undefined;
+    private refreshPending = false;
 
     constructor(
         private readonly configService: StockConfigService,
@@ -103,8 +107,7 @@ export class StockTreeDataProvider
     ) {}
 
     async initialize(): Promise<void> {
-        await this.loadStockCodes();
-        await this.fetchAllStockData();
+        await this.refresh();
     }
 
     getTreeItem(element: StockItem): vscode.TreeItem {
@@ -194,8 +197,27 @@ export class StockTreeDataProvider
     }
 
     async refresh(): Promise<void> {
-        await this.loadStockCodes();
-        await this.fetchAllStockData();
+        if (this.refreshInFlight) {
+            // Coalescing: while a refresh is running, only record one pending rerun.
+            this.refreshPending = true;
+            return this.refreshInFlight;
+        }
+
+        this.refreshInFlight = this.runRefreshLoop();
+        return this.refreshInFlight;
+    }
+
+    private async runRefreshLoop(): Promise<void> {
+        try {
+            do {
+                this.refreshPending = false;
+                await this.loadStockCodes();
+                await this.fetchAllStockData();
+            } while (this.refreshPending);
+        } finally {
+            this.refreshInFlight = undefined;
+            this.refreshPending = false;
+        }
     }
 
     getConfiguredItem(configId: string): StockConfigItem | undefined {
@@ -314,26 +336,43 @@ export class StockTreeDataProvider
         }
 
         const updateTime = new Date().toLocaleTimeString("zh-CN");
-        const [stockApiData, sectorApiData, indexApiData, futureApiData] =
+        const [stockResult, sectorResult, indexResult, futureResult] =
             await Promise.all([
                 stockRequestIds.length > 0
                     ? this.apiService.fetchBatchStocks(
                           stockRequestIds,
                           updateTime
                       )
-                    : Promise.resolve(new Map<string, StockData>()),
+                    : Promise.resolve({
+                          data: new Map<string, StockData>(),
+                          errors: new Map<string, QuoteErrorInfo>()
+                      }),
                 sectorCodes.length > 0
                     ? this.apiService.fetchBatchSectors(sectorCodes, updateTime)
-                    : Promise.resolve(new Map<string, StockData>()),
+                    : Promise.resolve({
+                          data: new Map<string, StockData>(),
+                          errors: new Map<string, QuoteErrorInfo>()
+                      }),
                 indexCodes.length > 0
                     ? this.apiService.fetchBatchIndices(indexCodes, updateTime)
-                    : Promise.resolve(new Map<string, StockData>()),
+                    : Promise.resolve({
+                          data: new Map<string, StockData>(),
+                          errors: new Map<string, QuoteErrorInfo>()
+                      }),
                 futureCodes.length > 0
                     ? this.apiService.fetchBatchFutures(futureCodes, updateTime)
-                    : Promise.resolve(new Map<string, StockData>())
+                    : Promise.resolve({
+                          data: new Map<string, StockData>(),
+                          errors: new Map<string, QuoteErrorInfo>()
+                      })
             ]);
+        const stockApiData = stockResult.data;
+        const sectorApiData = sectorResult.data;
+        const indexApiData = indexResult.data;
+        const futureApiData = futureResult.data;
 
         this.stocksData.clear();
+        this.quoteErrors.clear();
         for (const [apiSecId, stockData] of stockApiData.entries()) {
             const configId = this.apiToConfigId.get(apiSecId);
             if (configId) {
@@ -349,6 +388,30 @@ export class StockTreeDataProvider
         }
         for (const [futureCode, futureData] of futureApiData.entries()) {
             this.stocksData.set(`future:${futureCode}`, futureData);
+        }
+        for (const [apiSecId, errorInfo] of stockResult.errors.entries()) {
+            const configId = this.apiToConfigId.get(apiSecId);
+            if (configId && !this.stocksData.has(configId)) {
+                this.quoteErrors.set(configId, errorInfo);
+            }
+        }
+        for (const [code, errorInfo] of sectorResult.errors.entries()) {
+            const configId = `sector:${code}`;
+            if (!this.stocksData.has(configId)) {
+                this.quoteErrors.set(configId, errorInfo);
+            }
+        }
+        for (const [code, errorInfo] of indexResult.errors.entries()) {
+            const configId = `index:${code}`;
+            if (!this.stocksData.has(configId)) {
+                this.quoteErrors.set(configId, errorInfo);
+            }
+        }
+        for (const [code, errorInfo] of futureResult.errors.entries()) {
+            const configId = `future:${code}`;
+            if (!this.stocksData.has(configId)) {
+                this.quoteErrors.set(configId, errorInfo);
+            }
         }
 
         if (this.devConfig.devMode && this.devConfig.alertTestStockEnabled) {
@@ -390,15 +453,19 @@ export class StockTreeDataProvider
             const contextValue = this.resolveRootContextValue(config);
 
             if (!stockData) {
+                const errorInfo = this.quoteErrors.get(configId);
                 return new StockItem(
                     `${config.name ?? config.code}${isPinned ? " 📌" : ""}`,
                     vscode.TreeItemCollapsibleState.Collapsed,
-                    "加载失败",
+                    errorInfo
+                        ? `ERR:${this.getErrorCode(errorInfo.type)}`
+                        : "加载失败",
                     new vscode.ThemeIcon("error"),
                     configId,
                     config.type,
                     true,
-                    contextValue
+                    contextValue,
+                    this.getErrorTooltip(errorInfo)
                 );
             }
 
@@ -520,6 +587,16 @@ export class StockTreeDataProvider
                     )
                 ),
                 SUMMARY_DAILY_PNL_ID,
+                undefined,
+                false,
+                "summaryItem"
+            ),
+            new StockItem(
+                "数据刷新时间",
+                vscode.TreeItemCollapsibleState.None,
+                this.summary.updateTime || "--",
+                new vscode.ThemeIcon("clock"),
+                undefined,
                 undefined,
                 false,
                 "summaryItem"
@@ -1204,5 +1281,22 @@ export class StockTreeDataProvider
             return item.isPinned ? "indexRootPinned" : "indexRoot";
         }
         return item.isPinned ? "futureRootPinned" : "futureRoot";
+    }
+
+    private getErrorCode(type: QuoteErrorInfo["type"]): string {
+        if (type === "unsupported_symbol") {
+            return "UNSUPPORTED";
+        }
+        if (type === "network_error") {
+            return "NETWORK";
+        }
+        return "PARSE";
+    }
+
+    private getErrorTooltip(errorInfo: QuoteErrorInfo | undefined): string {
+        if (!errorInfo) {
+            return "数据加载失败";
+        }
+        return `数据源错误\n类型: ${errorInfo.type}\n来源: ${errorInfo.provider}\n详情: ${errorInfo.message}`;
     }
 }

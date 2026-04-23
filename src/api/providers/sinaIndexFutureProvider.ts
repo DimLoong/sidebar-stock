@@ -1,60 +1,136 @@
 import * as https from "https";
 import { TextDecoder } from "util";
 import { StockData } from "../../models/stock";
+import { ProviderResilienceCache } from "./providerResilienceCache";
+import { BatchFetchResult, QuoteErrorInfo, QuoteErrorType } from "./types";
 
 type FetchMode = "index" | "future";
+interface SingleFetchResult {
+  data: StockData | null;
+  errorType?: QuoteErrorType;
+  message?: string;
+}
 
 export class SinaIndexFutureProvider {
-  async fetchIndices(rawCodes: string[], updateTime: string): Promise<Map<string, StockData>> {
+  private readonly providerName = "sina_index_future";
+  private readonly resilience = new ProviderResilienceCache<StockData>({
+    successTtlMs: 2000,
+    failureBaseBackoffMs: 2000,
+    failureMaxBackoffMs: 30000,
+  });
+
+  async fetchIndices(rawCodes: string[], updateTime: string): Promise<BatchFetchResult> {
     return this.fetchByMode(rawCodes, updateTime, "index");
   }
 
-  async fetchFutures(rawCodes: string[], updateTime: string): Promise<Map<string, StockData>> {
+  async fetchFutures(rawCodes: string[], updateTime: string): Promise<BatchFetchResult> {
     return this.fetchByMode(rawCodes, updateTime, "future");
   }
 
-  private async fetchByMode(rawCodes: string[], updateTime: string, mode: FetchMode): Promise<Map<string, StockData>> {
+  private async fetchByMode(rawCodes: string[], updateTime: string, mode: FetchMode): Promise<BatchFetchResult> {
     const result = new Map<string, StockData>();
+    const errors = new Map<string, QuoteErrorInfo>();
     if (rawCodes.length === 0) {
-      return result;
+      return { data: result, errors };
     }
 
     await Promise.all(
       rawCodes.map(async (rawCode) => {
-        const data = await this.fetchSingle(rawCode, updateTime, mode);
-        if (data) {
-          result.set(rawCode.trim().toUpperCase(), data);
+        const normalized = rawCode.trim().toUpperCase();
+        if (!normalized) {
+          return;
         }
+
+        const key = `${mode}:${normalized}`;
+        const now = Date.now();
+        const fresh = this.resilience.getFresh(key, now);
+        if (fresh) {
+          result.set(normalized, fresh);
+          return;
+        }
+
+        if (!this.resilience.canAttempt(key, now)) {
+          const fallback = this.resilience.getAny(key);
+          if (fallback) {
+            result.set(normalized, fallback);
+          } else {
+            errors.set(normalized, this.buildError("network_error", "请求处于失败退避窗口中"));
+          }
+          return;
+        }
+
+        const fetched = await this.fetchSingle(normalized, updateTime, mode);
+        if (fetched.data) {
+          this.resilience.onSuccess(key, fetched.data);
+          result.set(normalized, fetched.data);
+          return;
+        }
+
+        this.resilience.onFailure(key);
+        const fallback = this.resilience.getAny(key);
+        if (fallback) {
+          result.set(normalized, fallback);
+          return;
+        }
+        errors.set(
+          normalized,
+          this.buildError(fetched.errorType ?? "unsupported_symbol", fetched.message ?? "未查询到有效行情")
+        );
       })
     );
 
-    return result;
+    return { data: result, errors };
   }
 
-  private async fetchSingle(rawCode: string, updateTime: string, mode: FetchMode): Promise<StockData | null> {
+  private async fetchSingle(rawCode: string, updateTime: string, mode: FetchMode): Promise<SingleFetchResult> {
     const normalized = rawCode.trim().toUpperCase();
     if (!normalized) {
-      return null;
+      return { data: null, errorType: "unsupported_symbol", message: "代码为空" };
     }
 
     const candidates =
       mode === "future"
         ? this.buildFutureCandidates(normalized)
         : this.buildIndexCandidates(normalized);
+    let sawNetworkError = false;
+    let sawPayload = false;
 
     for (const candidate of candidates) {
-      const payload = await this.requestSinaPayload(candidate);
+      const response = await this.requestSinaPayload(candidate);
+      if (response.networkError) {
+        sawNetworkError = true;
+      }
+      const payload = response.payload;
       if (!payload) {
         continue;
       }
+      sawPayload = true;
 
       const parsed = this.parseByCode(candidate, normalized, payload, updateTime, mode);
       if (parsed) {
-        return parsed;
+        return { data: parsed };
       }
     }
 
-    return null;
+    if (sawPayload) {
+      return {
+        data: null,
+        errorType: "parse_error",
+        message: "返回数据存在但解析失败（结构可能变化）",
+      };
+    }
+    if (sawNetworkError) {
+      return {
+        data: null,
+        errorType: "network_error",
+        message: "上游接口网络请求失败",
+      };
+    }
+    return {
+      data: null,
+      errorType: "unsupported_symbol",
+      message: "未命中可用路由或上游返回空数据",
+    };
   }
 
   private buildIndexCandidates(code: string): string[] {
@@ -98,7 +174,7 @@ export class SinaIndexFutureProvider {
     return /^[A-Z]{2,6}$/.test(code);
   }
 
-  private requestSinaPayload(requestCode: string): Promise<string> {
+  private requestSinaPayload(requestCode: string): Promise<{ payload: string; networkError: boolean }> {
     return new Promise((resolve) => {
       const req = https.request(
         {
@@ -121,18 +197,18 @@ export class SinaIndexFutureProvider {
               .split("\n")
               .find((it) => it.startsWith(`var hq_str_${requestCode}=`));
             if (!line) {
-              resolve("");
+              resolve({ payload: "", networkError: false });
               return;
             }
             const matched = line.match(/^var\s+hq_str_[^=]+=\"(.*)\";?$/);
-            resolve(matched?.[1] ?? "");
+            resolve({ payload: matched?.[1] ?? "", networkError: false });
           });
         }
       );
 
       req.on("error", (error) => {
         console.error("获取新浪指数/期货数据失败:", error);
-        resolve("");
+        resolve({ payload: "", networkError: true });
       });
 
       req.end();
@@ -305,5 +381,13 @@ export class SinaIndexFutureProvider {
       return Number.NaN;
     }
     return Number(trimmed);
+  }
+
+  private buildError(type: QuoteErrorType, message: string): QuoteErrorInfo {
+    return {
+      type,
+      provider: this.providerName,
+      message,
+    };
   }
 }

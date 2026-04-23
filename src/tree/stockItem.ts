@@ -10,12 +10,13 @@ export class StockItem extends vscode.TreeItem {
     public readonly configId?: string,
     public readonly itemType?: StockItemType,
     public readonly isRoot: boolean = false,
-    contextValue?: string
+    contextValue?: string,
+    tooltip?: string
   ) {
     super(label, collapsibleState);
     this.description = description;
     this.iconPath = iconPath;
-    this.tooltip = "";
+    this.tooltip = tooltip ?? "";
 
     if (contextValue) {
       this.contextValue = contextValue;

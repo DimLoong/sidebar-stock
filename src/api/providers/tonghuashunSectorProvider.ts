@@ -1,27 +1,83 @@
 import * as http from "http";
 import { StockData } from "../../models/stock";
-import { MarketDataProvider } from "./types";
+import {
+  BatchFetchResult,
+  MarketDataProvider,
+  QuoteErrorInfo,
+  QuoteErrorType,
+} from "./types";
+import { ProviderResilienceCache } from "./providerResilienceCache";
+
+interface SectorFetchResult {
+  data: StockData | null;
+  errorType?: QuoteErrorType;
+  message?: string;
+}
 
 export class TonghuashunSectorProvider implements MarketDataProvider {
-  async fetch(sectorCodes: string[], updateTime: string): Promise<Map<string, StockData>> {
+  private readonly providerName = "tonghuashun_sector";
+  private readonly resilience = new ProviderResilienceCache<StockData>({
+    successTtlMs: 2000,
+    failureBaseBackoffMs: 2000,
+    failureMaxBackoffMs: 30000,
+  });
+
+  async fetch(sectorCodes: string[], updateTime: string): Promise<BatchFetchResult> {
     const result = new Map<string, StockData>();
+    const errors = new Map<string, QuoteErrorInfo>();
     if (sectorCodes.length === 0) {
-      return result;
+      return { data: result, errors };
     }
 
     await Promise.all(
       sectorCodes.map(async (code) => {
-        const data = await this.fetchSector(code, updateTime);
-        if (data) {
-          result.set(code, data);
+        const normalizedCode = code.trim().toUpperCase();
+        if (!normalizedCode) {
+          return;
         }
+
+        const key = `sector:${normalizedCode}`;
+        const now = Date.now();
+        const fresh = this.resilience.getFresh(key, now);
+        if (fresh) {
+          result.set(normalizedCode, fresh);
+          return;
+        }
+
+        if (!this.resilience.canAttempt(key, now)) {
+          const fallback = this.resilience.getAny(key);
+          if (fallback) {
+            result.set(normalizedCode, fallback);
+          } else {
+            errors.set(normalizedCode, this.buildError("network_error", "请求处于失败退避窗口中"));
+          }
+          return;
+        }
+
+        const fetched = await this.fetchSector(normalizedCode, updateTime);
+        if (fetched.data) {
+          this.resilience.onSuccess(key, fetched.data);
+          result.set(normalizedCode, fetched.data);
+          return;
+        }
+
+        this.resilience.onFailure(key);
+        const fallback = this.resilience.getAny(key);
+        if (fallback) {
+          result.set(normalizedCode, fallback);
+          return;
+        }
+        errors.set(
+          normalizedCode,
+          this.buildError(fetched.errorType ?? "unsupported_symbol", fetched.message ?? "未查询到有效行情")
+        );
       })
     );
 
-    return result;
+    return { data: result, errors };
   }
 
-  private fetchSector(code: string, updateTime: string): Promise<StockData | null> {
+  private fetchSector(code: string, updateTime: string): Promise<SectorFetchResult> {
     const url = `http://d.10jqka.com.cn/v6/realhead/bk_${code}/last.js`;
     return new Promise((resolve) => {
       http
@@ -38,27 +94,43 @@ export class TonghuashunSectorProvider implements MarketDataProvider {
         })
         .on("error", (error) => {
           console.error(`获取板块数据失败: ${code}`, error);
-          resolve(null);
+          resolve({
+            data: null,
+            errorType: "network_error",
+            message: String(error),
+          });
         });
     });
   }
 
-  private parseSectorResponse(data: string, code: string, updateTime: string): StockData | null {
+  private parseSectorResponse(data: string, code: string, updateTime: string): SectorFetchResult {
     try {
       const matched = data.match(/\((\{.*\})\)\s*$/);
       if (!matched?.[1]) {
-        return null;
+        return {
+          data: null,
+          errorType: "parse_error",
+          message: "返回结构不符合预期",
+        };
       }
 
       const parsed = JSON.parse(matched[1]);
       const items = parsed?.items;
       if (!items || typeof items !== "object") {
-        return null;
+        return {
+          data: null,
+          errorType: "parse_error",
+          message: "返回结构缺少 items 字段",
+        };
       }
 
       const currentNum = this.toNumber(items["10"]);
       if (!Number.isFinite(currentNum)) {
-        return null;
+        return {
+          data: null,
+          errorType: "unsupported_symbol",
+          message: "无有效 current 字段，可能是无效板块代码",
+        };
       }
 
       const previousNum = this.toNumber(items["6"]);
@@ -77,17 +149,23 @@ export class TonghuashunSectorProvider implements MarketDataProvider {
             : 0;
 
       return {
-        code: `bk.${code}`,
-        name: String(items.name || code),
-        current: currentNum.toFixed(3),
-        change: change.toFixed(3),
-        changePercent: changePercent.toFixed(2),
-        previousClose: previousClose.toFixed(3),
-        updateTime,
+        data: {
+          code: `bk.${code}`,
+          name: String(items.name || code),
+          current: currentNum.toFixed(3),
+          change: change.toFixed(3),
+          changePercent: changePercent.toFixed(2),
+          previousClose: previousClose.toFixed(3),
+          updateTime,
+        },
       };
     } catch (error) {
       console.error(`解析板块数据失败: ${code}`, error);
-      return null;
+      return {
+        data: null,
+        errorType: "parse_error",
+        message: String(error),
+      };
     }
   }
 
@@ -103,5 +181,13 @@ export class TonghuashunSectorProvider implements MarketDataProvider {
       return Number.NaN;
     }
     return Number(trimmed);
+  }
+
+  private buildError(type: QuoteErrorType, message: string): QuoteErrorInfo {
+    return {
+      type,
+      provider: this.providerName,
+      message,
+    };
   }
 }
