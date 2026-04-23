@@ -5,7 +5,7 @@ import { normalizeStockConfig, toConfigId } from "../utils/stockCode";
 const CONFIG_KEY = "stockCodeList";
 const CONFIG_SECTION = "sidebarStock";
 const LEGACY_CONFIG_SECTION = "stockInvestment";
-const DEFAULT_ITEM: StockConfigItem = { type: "stock", market: "sh", code: "000001" };
+const DEFAULT_ITEM: StockConfigItem = { type: "stock", market: "sh", code: "000001", name: "上证指数" };
 
 export class StockConfigService {
   async load(): Promise<{ items: StockConfigItem[]; migrated: boolean }> {
@@ -26,9 +26,14 @@ export class StockConfigService {
       }
     }
 
-    const finalItems = this.applyOrder(this.deduplicate(normalized));
-    if (finalItems.length === 0) {
-      finalItems.push(DEFAULT_ITEM);
+    let finalItems = this.applyOrder(this.deduplicate(normalized));
+    const shouldInitializeDefaults = rawList.length === 0 && finalItems.length === 0;
+    if (shouldInitializeDefaults) {
+      const defaults = this.loadDefaultItems();
+      finalItems = defaults.length > 0 ? defaults : [DEFAULT_ITEM];
+      shouldMigrate = true;
+    } else if (finalItems.length === 0) {
+      finalItems = [DEFAULT_ITEM];
     }
 
     if (shouldMigrate) {
@@ -164,5 +169,23 @@ export class StockConfigService {
 
   private assignOrder(items: StockConfigItem[]): StockConfigItem[] {
     return items.map((item, index) => ({ ...item, order: index }));
+  }
+
+  private loadDefaultItems(): StockConfigItem[] {
+    try {
+      // Keep defaults in a standalone JSON file for maintainability.
+      const raw = require("../data/defaultWatchlist.json") as unknown;
+      if (!Array.isArray(raw)) {
+        return [];
+      }
+      const normalized = raw
+        .map((item) => normalizeStockConfig(item))
+        .filter((item): item is StockConfigItem => Boolean(item));
+
+      return this.applyOrder(this.deduplicate(normalized));
+    } catch (error) {
+      console.error("加载默认观察列表失败:", error);
+      return [];
+    }
   }
 }
