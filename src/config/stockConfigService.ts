@@ -96,6 +96,8 @@ export class StockConfigService {
         market: it.market,
         code: it.code,
         name: it.name,
+        isPinned: it.isPinned,
+        pinnedAt: it.pinnedAt,
       };
       if (shares > 0) {
         next.shares = shares;
@@ -111,9 +113,51 @@ export class StockConfigService {
     await this.persist(updated);
   }
 
+  async pin(configId: string): Promise<void> {
+    const { items } = await this.load();
+    const index = items.findIndex((item) => toConfigId(item) === configId);
+    if (index < 0) {
+      return;
+    }
+
+    const current = items[index];
+    const next: StockConfigItem = {
+      ...current,
+      isPinned: true,
+      pinnedAt: Date.now(),
+    };
+
+    const remaining = [...items.slice(0, index), ...items.slice(index + 1)];
+    const firstNormalIndex = remaining.findIndex((item) => !item.isPinned);
+    const insertIndex = firstNormalIndex >= 0 ? firstNormalIndex : remaining.length;
+    const updated = [...remaining.slice(0, insertIndex), next, ...remaining.slice(insertIndex)];
+    await this.persist(updated);
+  }
+
+  async unpin(configId: string): Promise<void> {
+    const { items } = await this.load();
+    const index = items.findIndex((item) => toConfigId(item) === configId);
+    if (index < 0) {
+      return;
+    }
+
+    const current = items[index];
+    const next: StockConfigItem = { ...current };
+    delete next.isPinned;
+    delete next.pinnedAt;
+
+    const remaining = [...items.slice(0, index), ...items.slice(index + 1)];
+    const firstNormalIndex = remaining.findIndex((item) => !item.isPinned);
+    const insertIndex = firstNormalIndex >= 0 ? firstNormalIndex : remaining.length;
+    const updated = [...remaining.slice(0, insertIndex), next, ...remaining.slice(insertIndex)];
+    await this.persist(updated);
+  }
+
   async reorder(configIds: string[]): Promise<void> {
     const { items } = await this.load();
-    const byId = new Map(items.map((item) => [toConfigId(item), item] as const));
+    const pinnedItems = items.filter((item) => item.isPinned);
+    const normalItems = items.filter((item) => !item.isPinned);
+    const byId = new Map(normalItems.map((item) => [toConfigId(item), item] as const));
     const ordered: StockConfigItem[] = [];
     const seen = new Set<string>();
 
@@ -126,7 +170,7 @@ export class StockConfigService {
       ordered.push(item);
     }
 
-    for (const item of items) {
+    for (const item of normalItems) {
       const id = toConfigId(item);
       if (seen.has(id)) {
         continue;
@@ -134,11 +178,15 @@ export class StockConfigService {
       ordered.push(item);
     }
 
-    await this.persist(ordered);
+    await this.persist([...pinnedItems, ...ordered]);
   }
 
   private async persist(items: StockConfigItem[]): Promise<void> {
-    await this.getConfig().update(CONFIG_KEY, this.deduplicate(items), vscode.ConfigurationTarget.Global);
+    await this.getConfig().update(
+      CONFIG_KEY,
+      this.normalizePersistedItems(this.deduplicate(items)),
+      vscode.ConfigurationTarget.Global
+    );
   }
 
   private getConfig(): vscode.WorkspaceConfiguration {
@@ -163,6 +211,23 @@ export class StockConfigService {
     }
 
     return result;
+  }
+
+  private normalizePersistedItems(items: StockConfigItem[]): StockConfigItem[] {
+    return items.map((item) => {
+      if (item.isPinned) {
+        const pinnedAt = Number(item.pinnedAt);
+        return {
+          ...item,
+          pinnedAt: Number.isFinite(pinnedAt) && pinnedAt > 0 ? Math.floor(pinnedAt) : Date.now(),
+        };
+      }
+
+      const next: StockConfigItem = { ...item };
+      delete next.isPinned;
+      delete next.pinnedAt;
+      return next;
+    });
   }
 
   private loadDefaultItems(): StockConfigItem[] {

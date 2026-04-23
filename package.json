@@ -158,12 +158,22 @@
             {
                 "command": "stockView.editHoldingShares",
                 "title": "编辑持仓信息",
-                "enablement": "view == stockView && (viewItem == stockRoot || viewItem == stockHolding)"
+                "enablement": "view == stockView && (viewItem == stockRoot || viewItem == stockRootPinned || viewItem == stockHolding)"
             },
             {
                 "command": "stockView.deleteStock",
-                "title": "删除股票",
+                "title": "删除项目",
+                "enablement": "view == stockView && (viewItem == stockRoot || viewItem == stockRootPinned || viewItem == sectorRoot || viewItem == sectorRootPinned || viewItem == indexRoot || viewItem == indexRootPinned || viewItem == futureRoot || viewItem == futureRootPinned)"
+            },
+            {
+                "command": "stockView.pinItem",
+                "title": "置顶",
                 "enablement": "view == stockView && (viewItem == stockRoot || viewItem == sectorRoot || viewItem == indexRoot || viewItem == futureRoot)"
+            },
+            {
+                "command": "stockView.unpinItem",
+                "title": "取消置顶",
+                "enablement": "view == stockView && (viewItem == stockRootPinned || viewItem == sectorRootPinned || viewItem == indexRootPinned || viewItem == futureRootPinned)"
             },
             {
                 "command": "stockView.addStock",
@@ -193,13 +203,23 @@
             "view/item/context": [
                 {
                     "command": "stockView.editHoldingShares",
-                    "when": "view == stockView && (viewItem == stockRoot || viewItem == stockHolding)",
+                    "when": "view == stockView && (viewItem == stockRoot || viewItem == stockRootPinned || viewItem == stockHolding)",
                     "group": "stock@1"
                 },
                 {
-                    "command": "stockView.deleteStock",
+                    "command": "stockView.pinItem",
                     "when": "view == stockView && (viewItem == stockRoot || viewItem == sectorRoot || viewItem == indexRoot || viewItem == futureRoot)",
                     "group": "stock@2"
+                },
+                {
+                    "command": "stockView.unpinItem",
+                    "when": "view == stockView && (viewItem == stockRootPinned || viewItem == sectorRootPinned || viewItem == indexRootPinned || viewItem == futureRootPinned)",
+                    "group": "stock@2"
+                },
+                {
+                    "command": "stockView.deleteStock",
+                    "when": "view == stockView && (viewItem == stockRoot || viewItem == stockRootPinned || viewItem == sectorRoot || viewItem == sectorRootPinned || viewItem == indexRoot || viewItem == indexRootPinned || viewItem == futureRoot || viewItem == futureRootPinned)",
+                    "group": "stock@3"
                 }
             ]
         }

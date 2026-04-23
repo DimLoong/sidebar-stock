@@ -41,6 +41,18 @@ export function registerCommands(
                 await handleDelete(stockDataProvider, item);
             }
         ),
+        vscode.commands.registerCommand(
+            "stockView.pinItem",
+            async (item: StockItem) => {
+                await handlePin(stockDataProvider, item);
+            }
+        ),
+        vscode.commands.registerCommand(
+            "stockView.unpinItem",
+            async (item: StockItem) => {
+                await handleUnpin(stockDataProvider, item);
+            }
+        ),
         vscode.commands.registerCommand("stockView.addStock", async () => {
             await handleAdd(stockDataProvider);
         })
@@ -168,6 +180,30 @@ async function handleDelete(
 
     await stockDataProvider.deleteItem(item.configId);
     vscode.window.showInformationMessage(`已删除 ${item.label}`);
+}
+
+async function handlePin(
+    stockDataProvider: StockTreeDataProvider,
+    item: StockItem | undefined
+): Promise<void> {
+    if (!item?.configId || !item.isRoot || !item.itemType) {
+        vscode.window.showErrorMessage("仅普通列表项支持置顶");
+        return;
+    }
+
+    await stockDataProvider.pinItem(item.configId);
+}
+
+async function handleUnpin(
+    stockDataProvider: StockTreeDataProvider,
+    item: StockItem | undefined
+): Promise<void> {
+    if (!item?.configId || !item.isRoot || !item.itemType) {
+        vscode.window.showErrorMessage("仅普通列表项支持取消置顶");
+        return;
+    }
+
+    await stockDataProvider.unpinItem(item.configId);
 }
 
 async function handleAdd(

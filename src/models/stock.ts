@@ -19,6 +19,8 @@ export interface StockConfigItem {
   shares?: number;
   costPrice?: number;
   costDate?: string;
+  isPinned?: boolean;
+  pinnedAt?: number;
 }
 
 export interface HoldingInfo {

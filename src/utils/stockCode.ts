@@ -185,19 +185,23 @@ export function normalizeStockConfig(raw: unknown): StockConfigItem | null {
   }
 
   if (type === "sector") {
-    return {
+    const item: StockConfigItem = {
       type: "sector",
       code,
       name: obj.name ? String(obj.name).trim() : undefined,
     };
+    applyPinnedFields(item, obj);
+    return item;
   }
 
   if (type === "index" || type === "future") {
-    return {
+    const item: StockConfigItem = {
       type,
       code,
       name: obj.name ? String(obj.name).trim() : undefined,
     };
+    applyPinnedFields(item, obj);
+    return item;
   }
 
   const market = normalizeMarket(obj.market ? String(obj.market) : undefined) ?? inferMarket(code);
@@ -234,8 +238,21 @@ export function normalizeStockConfig(raw: unknown): StockConfigItem | null {
       item.costDate = date.iso;
     }
   }
+  applyPinnedFields(item, obj);
 
   return item;
+}
+
+function applyPinnedFields(item: StockConfigItem, source: Record<string, unknown>): void {
+  if (source.isPinned !== true) {
+    return;
+  }
+
+  item.isPinned = true;
+  const pinnedAt = Number(source.pinnedAt);
+  if (Number.isFinite(pinnedAt) && pinnedAt > 0) {
+    item.pinnedAt = Math.floor(pinnedAt);
+  }
 }
 
 export function toHoldingMap(items: StockConfigItem[]): Map<string, HoldingInfo> {

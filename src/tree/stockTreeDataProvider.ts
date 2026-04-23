@@ -152,6 +152,13 @@ export class StockTreeDataProvider
         dataTransfer: vscode.DataTransfer,
         _token: vscode.CancellationToken
     ): Promise<void> {
+        if (target?.contextValue === "summaryItem") {
+            return;
+        }
+        if (target && !this.isSortableRoot(target)) {
+            return;
+        }
+
         const transferItem = dataTransfer.get(DND_MIME);
         if (!transferItem) {
             return;
@@ -172,16 +179,11 @@ export class StockTreeDataProvider
             return;
         }
 
-        const targetConfigId = this.isSortableRoot(target)
-            ? target.configId
-            : undefined;
-        const insertAtStart = target?.contextValue === "summaryItem";
-        const reorderedIds = this.buildReorderedIds(
-            movingConfigIds,
-            targetConfigId,
-            insertAtStart
-        );
-        const currentIds = this.stockItems.map((item) => toConfigId(item));
+        const targetConfigId = this.isSortableRoot(target) ? target.configId : undefined;
+        const reorderedIds = this.buildReorderedIds(movingConfigIds, targetConfigId);
+        const currentIds = this.stockItems
+            .filter((item) => !item.isPinned && !this.isDevTestStock(item))
+            .map((item) => toConfigId(item));
 
         if (JSON.stringify(reorderedIds) === JSON.stringify(currentIds)) {
             return;
@@ -255,6 +257,16 @@ export class StockTreeDataProvider
             costPrice,
             costDate
         );
+        await this.refresh();
+    }
+
+    async pinItem(configId: string): Promise<void> {
+        await this.configService.pin(configId);
+        await this.refresh();
+    }
+
+    async unpinItem(configId: string): Promise<void> {
+        await this.configService.unpin(configId);
         await this.refresh();
     }
 
@@ -368,22 +380,25 @@ export class StockTreeDataProvider
             ];
         }
 
-        const stockRows = this.stockItems.map((config) => {
+        const stockRows = this.getDisplayItems().map((config) => {
             const configId = toConfigId(config);
             const stockData = this.stocksData.get(configId);
             const isHoldingStock =
                 config.type === "stock" &&
                 (this.holdings.get(configId)?.shares ?? 0) > 0;
+            const isPinned = Boolean(config.isPinned);
+            const contextValue = this.resolveRootContextValue(config);
 
             if (!stockData) {
                 return new StockItem(
-                    config.name ?? config.code,
+                    `${config.name ?? config.code}${isPinned ? " 📌" : ""}`,
                     vscode.TreeItemCollapsibleState.Collapsed,
                     "加载失败",
                     new vscode.ThemeIcon("error"),
                     configId,
                     config.type,
-                    true
+                    true,
+                    contextValue
                 );
             }
 
@@ -396,9 +411,6 @@ export class StockTreeDataProvider
             const isAlertUp = alertState?.type === "surgeUp";
             const isAlertDown = alertState?.type === "surgeDown";
             const alertPrefix = isAlertUp ? "⇧⇧ " : isAlertDown ? "⇩⇩ " : "";
-            const contextValue = this.isDevTestStock(config)
-                ? "devTestStock"
-                : undefined;
             const isSector = config.type === "sector";
             const isIndex =
                 config.type === "index" ||
@@ -431,7 +443,7 @@ export class StockTreeDataProvider
                         );
 
             return new StockItem(
-                `${alertPrefix}${config.name ?? stockData.name}`,
+                `${alertPrefix}${config.name ?? stockData.name}${isPinned ? " 📌" : ""}`,
                 vscode.TreeItemCollapsibleState.Collapsed,
                 `${stockData.current} ${arrow} ${stockData.changePercent}%${displayTag(config)}${this.alertHintText(alertState)}`,
                 icon,
@@ -508,16 +520,6 @@ export class StockTreeDataProvider
                     )
                 ),
                 SUMMARY_DAILY_PNL_ID,
-                undefined,
-                false,
-                "summaryItem"
-            ),
-            new StockItem(
-                "更新时间",
-                vscode.TreeItemCollapsibleState.None,
-                this.summary.updateTime || "--",
-                new vscode.ThemeIcon("clock"),
-                undefined,
                 undefined,
                 false,
                 "summaryItem"
@@ -1145,16 +1147,18 @@ export class StockTreeDataProvider
         return Boolean(
             item?.isRoot &&
             item.configId &&
-            item.configId !== DEV_TEST_STOCK_CONFIG_ID
+            item.configId !== DEV_TEST_STOCK_CONFIG_ID &&
+            !item.contextValue?.includes("Pinned")
         );
     }
 
     private buildReorderedIds(
         movingConfigIds: string[],
-        targetConfigId?: string,
-        insertAtStart: boolean = false
+        targetConfigId?: string
     ): string[] {
-        const currentIds = this.stockItems.map((item) => toConfigId(item));
+        const currentIds = this.stockItems
+            .filter((item) => !item.isPinned && !this.isDevTestStock(item))
+            .map((item) => toConfigId(item));
         const existing = new Set(currentIds);
 
         const moving = movingConfigIds.filter(
@@ -1166,16 +1170,39 @@ export class StockTreeDataProvider
         }
 
         const remaining = currentIds.filter((id) => !moving.includes(id));
-        const insertAt = insertAtStart
-            ? 0
-            : targetConfigId
-              ? Math.max(remaining.indexOf(targetConfigId), 0)
-              : remaining.length;
+        const insertAt = targetConfigId
+            ? Math.max(remaining.indexOf(targetConfigId), 0)
+            : remaining.length;
 
         return [
             ...remaining.slice(0, insertAt),
             ...moving,
             ...remaining.slice(insertAt)
         ];
+    }
+
+    private getDisplayItems(): StockConfigItem[] {
+        const pinned = this.stockItems
+            .filter((item) => item.isPinned)
+            .sort((a, b) => (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0));
+        const normal = this.stockItems.filter((item) => !item.isPinned);
+        return [...pinned, ...normal];
+    }
+
+    private resolveRootContextValue(item: StockConfigItem): string | undefined {
+        if (this.isDevTestStock(item)) {
+            return "devTestStock";
+        }
+
+        if (item.type === "stock") {
+            return item.isPinned ? "stockRootPinned" : "stockRoot";
+        }
+        if (item.type === "sector") {
+            return item.isPinned ? "sectorRootPinned" : "sectorRoot";
+        }
+        if (item.type === "index") {
+            return item.isPinned ? "indexRootPinned" : "indexRoot";
+        }
+        return item.isPinned ? "futureRootPinned" : "futureRoot";
     }
 }
